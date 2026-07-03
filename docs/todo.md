@@ -7,26 +7,40 @@ This checklist follows the most logical path for Document Copilot:
 4. then build the frontend UI and auth.
 
 ## 1. Local environment
-- [ ] Install Python 3.12+ and verify with `python --version`
-- [ ] Install `uv` and verify with `uv --version`
-- [ ] Install Node.js 20+ and verify with `node --version`
-- [ ] Install `pnpm` and verify with `pnpm --version`
-- [ ] Confirm repo is on GitHub and remote is configured
+- [X] Install Python 3.12+ and verify with `python --version`
+- [X] Install `uv` and verify with `uv --version`
+- [X] Install Node.js 20+ and verify with `node --version`
+- [X] Install `pnpm` and verify with `pnpm --version`
+- [X] Confirm repo is on GitHub and remote is configured
 
 ## 2. Supabase setup
-- [ ] Create a Supabase project for the app
-- [ ] Collect `PROJECT_URL`, `anon key`, `service_role key`, and direct DB connection string
-- [ ] Enable email auth only in Supabase Auth settings
-- [ ] Decide whether email confirmation will be disabled for local dev
-- [ ] Keep `service_role` secret out of git
+- [X] Create a Supabase project for the app
+- [X] Collect `PROJECT_URL`, `anon key`, `service_role key`, and direct DB connection string
+- [X] Enable email auth only in Supabase Auth settings
+- [X] Decide whether email confirmation will be disabled for local dev
+- [X] Keep `service_role` secret out of git
 
-## 3. Backend foundations
-- [ ] Initialize backend environment in `backend/`
-- [ ] Install backend dependencies using `uv add` (FastAPI, Supabase, OpenAI, SQLAlchemy, Alembic, pgvector, etc.)
-- [ ] Create `backend/app/config.py` and `.env` loader for Supabase & OpenAI
-- [ ] Create database models for documents, chunks, embeddings, citations, chats, users
-- [ ] Configure Alembic and generate initial migrations
-- [ ] Apply migrations to Supabase using `uv run alembic upgrade head`
+## 3. Backend scaffold & database
+Goal: a running FastAPI service with a migrated Supabase schema.
+- [X] Init backend deps and project layout (backend-setup)
+- [X] app/config.py – settings module, fail fast on missing env vars
+- [ ] app/main.py – FastAPI app, CORS, health check (GET /health)
+- [ ] SQLAlchemy models in app/database/models.py:
+  - [ ] profiles
+  - [ ] source_documents
+  - [ ] document_chunks (embedding + generated tsvector)
+  - [ ] chat_threads
+  - [ ] chat_messages
+  - [ ] message_citations
+- [ ] Alembic init + first migration:
+  - [ ] create extension if not exists vector
+  - [ ] vector (1536) embedding column
+  - [ ] generated tsvector column on chunks
+  - [ ] HNSW index (vector) + GIN index (full-text)
+  - [ ] RLS policies (users see only their own chats)
+- [ ] uv run alembic upgrade head against Supabase direct connection
+- [ ] app/database/supabase.py – user-scoped and service-role clients
+- [ ] Verify: uv run uvicorn app.main:app -reload → health check returns 200
 
 ## 4. Document ingestion + embeddings
 - [ ] Download or seed the sample SEC corpus with `data/download.py`
