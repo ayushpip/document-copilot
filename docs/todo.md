@@ -24,14 +24,14 @@ This checklist follows the most logical path for Document Copilot:
 Goal: a running FastAPI service with a migrated Supabase schema.
 - [X] Init backend deps and project layout (backend-setup)
 - [X] app/config.py – settings module, fail fast on missing env vars
-- [ ] app/main.py – FastAPI app, CORS, health check (GET /health)
-- [ ] SQLAlchemy models in app/database/models.py:
-  - [ ] profiles
-  - [ ] source_documents
-  - [ ] document_chunks (embedding + generated tsvector)
-  - [ ] chat_threads
-  - [ ] chat_messages
-  - [ ] message_citations
+- [X] app/main.py – FastAPI app, CORS, health check (GET /health)
+- [X] SQLAlchemy models in app/database/models.py:
+  - [X] users
+  - [X] source_documents
+  - [X] document_chunks (embedding + generated tsvector)
+  - [X] chat_threads
+  - [X] chat_messages
+  - [X] message_citations
 - [ ] Alembic init + first migration:
   - [ ] create extension if not exists vector
   - [ ] vector (1536) embedding column
