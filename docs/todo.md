@@ -48,15 +48,16 @@ Goal: analysts can sign in with email; backend rejects unauthenticated requests.
 
 **Backend**
 
-- [ ] `app/auth/dependencies.py` — verify `Authorization: Bearer <supabase_jwt>`, expose `get_current_user`
-- [ ] Reject missing/expired tokens with `401` before any chat or retrieval work
+- [X] `app/auth/dependencies.py` — verify `Authorization: Bearer <supabase_jwt>`, expose `get_current_user`
+- [X] Reject missing/expired tokens with `401` before any chat or retrieval work
 
 **Frontend**
 
-- [ ] Scaffold Vite + React + TypeScript + Tailwind + shadcn ([frontend-setup](guides/frontend-setup.md))
-- [ ] `src/lib/env.ts` — validate `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
-- [ ] `src/lib/supabase.ts` — browser Supabase client
-- [ ] `src/lib/http.ts` + `src/lib/api.ts` — fetch wrapper with automatic bearer token
+- [X] Scaffold Vite + React + TypeScript + Tailwind + shadcn ([frontend-setup](guides/frontend-setup.md))
+- [X] Install `@supabase/supabase-js`, routing, and UI dependencies
+- [X] `src/lib/env.ts` — validate `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- [X] `src/lib/supabase.ts` — browser Supabase client
+- [X] `src/lib/http.ts` + `src/lib/api.ts` — fetch wrapper with automatic bearer token
 - [ ] Sign-in / sign-up pages (email only, no SSO)
 - [ ] Protected routes — redirect unauthenticated users to login
 - [ ] Verify: sign up, sign in, token reaches backend on a test authenticated endpoint
