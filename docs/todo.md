@@ -1,10 +1,10 @@
 # Project implementation checklist
 
 This checklist follows the most logical path for Document Copilot:
-1. establish infrastructure and data pipeline first,
+1. establish infrastructure first,
 2. build the backend core,
-3. wire in retrieval and grounding,
-4. then build the frontend UI and auth.
+3. wire in auth,
+4. then build ingestion, retrieval, and the analyst UI.
 
 ## 1. Local environment
 - [X] Install Python 3.12+ and verify with `python --version`
@@ -39,18 +39,37 @@ Goal: a running FastAPI service with a migrated Supabase schema.
   - [X] HNSW index (vector) + GIN index (full-text)
   - [X] RLS policies (users see only their own chats)
 - [X] uv run alembic upgrade head against Supabase direct connection
-- [ ] app/database/supabase.py – user-scoped and service-role clients
-- [ ] Verify: uv run uvicorn app.main:app -reload → health check returns 200
+- [X] app/database/supabase.py – user-scoped and service-role clients
+- [X] Verify: uv run uvicorn app.main:app --reload → health check returns 200
 
-## 4. Document ingestion + embeddings
-- [ ] Download or seed the sample SEC corpus with `data/download.py`
+## Phase 4 — Auth (full stack)
+
+Goal: analysts can sign in with email; backend rejects unauthenticated requests.
+
+**Backend**
+
+- [ ] `app/auth/dependencies.py` — verify `Authorization: Bearer <supabase_jwt>`, expose `get_current_user`
+- [ ] Reject missing/expired tokens with `401` before any chat or retrieval work
+
+**Frontend**
+
+- [ ] Scaffold Vite + React + TypeScript + Tailwind + shadcn ([frontend-setup](guides/frontend-setup.md))
+- [ ] `src/lib/env.ts` — validate `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- [ ] `src/lib/supabase.ts` — browser Supabase client
+- [ ] `src/lib/http.ts` + `src/lib/api.ts` — fetch wrapper with automatic bearer token
+- [ ] Sign-in / sign-up pages (email only, no SSO)
+- [ ] Protected routes — redirect unauthenticated users to login
+- [ ] Verify: sign up, sign in, token reaches backend on a test authenticated endpoint
+
+## 5. Document ingestion + embeddings
+- [X] Download or seed the sample SEC corpus with `data/download.py`
 - [ ] Build ingestion logic to parse filings into raw documents
 - [ ] Chunk documents with source metadata (company, filing, page, section)
 - [ ] Generate embeddings for chunks using OpenAI or chosen model
 - [ ] Store documents, chunks, and embeddings in Supabase
 - [ ] Add citation metadata so each chunk can be traced back to a source page
 
-## 5. Retrieval and answer grounding
+## 6. Retrieval and answer grounding
 - [ ] Implement vector search over chunks in Supabase `pgvector`
 - [ ] Add full-text / SQL filters for company, filing year, section
 - [ ] Build a retrieval pipeline that returns top chunks plus source references
@@ -58,23 +77,19 @@ Goal: a running FastAPI service with a migrated Supabase schema.
 - [ ] Ensure the backend response includes the raw source text and citation details
 - [ ] Add safety logic so the model says “I don’t know” when the answer is not in the corpus
 
-## 6. Auth and chat history
-- [ ] Wire Supabase Auth into the backend and frontend
-- [ ] Add email sign-in / sign-up flows in the frontend
+## 7. Chat history
 - [ ] Create chat history tables and storage in the backend
 - [ ] Save analyst conversations and source-backed answers
 - [ ] Build a UI for analysts to review their past sessions
 
-## 7. Frontend app
-- [ ] Scaffold `frontend/` with Vite + React + TypeScript
+## 8. Frontend app
 - [ ] Install `@supabase/supabase-js`, routing, and UI dependencies
-- [ ] Create a login page using Supabase email auth
 - [ ] Create a query/chat page and submit questions to the backend
 - [ ] Display answers with citations and source passages
 - [ ] Add UI for selecting filings, companies, and years
 - [ ] Add conversation history / saved chats view
 
-## 8. Validation and client readiness
+## 9. Validation and client readiness
 - [ ] Test all sample questions from the client brief manually
 - [ ] Verify answers return cited source passages for every claim
 - [ ] Confirm no hallucinations or unsupported inference leaks through
@@ -82,7 +97,7 @@ Goal: a running FastAPI service with a migrated Supabase schema.
 - [ ] Validate analyst workflow: ask question, inspect source, save chat
 - [ ] Write a quick “pilot checklist” for the first 5 analysts
 
-## 9. Deployment and launch
+## 10. Deployment and launch
 - [ ] Choose a host for backend and frontend (Railway, Vercel, etc.)
 - [ ] Deploy backend, frontend, and connect to Supabase
 - [ ] Set production environment variables securely
@@ -93,9 +108,11 @@ Goal: a running FastAPI service with a migrated Supabase schema.
 
 ## Recommended order to build
 1. Setup environment + Supabase
-2. Build backend data model and ingestion
-3. Implement retrieval and grounding logic
-4. Add auth and chat persistence
-5. Build frontend UI and connect it
-6. Test against the client brief
-7. Deploy and validate
+2. Build backend data model
+3. Add auth
+4. Build ingestion
+5. Implement retrieval and grounding logic
+6. Add chat persistence
+7. Build frontend UI and connect it
+8. Test against the client brief
+9. Deploy and validate

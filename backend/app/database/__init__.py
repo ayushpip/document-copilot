@@ -9,6 +9,7 @@ from app.database.models import (
     SourceDocument,
     User,
 )
+from app.database.supabase import create_service_role_client, create_user_client
 
 __all__ = [
     "Base",
@@ -19,4 +20,6 @@ __all__ = [
     "ChatThread",
     "ChatMessage",
     "MessageCitation",
+    "create_service_role_client",
+    "create_user_client",
 ]
