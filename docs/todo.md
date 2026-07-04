@@ -62,7 +62,26 @@ Goal: analysts can sign in with email; backend rejects unauthenticated requests.
 - [X] Protected routes — redirect unauthenticated users to login
 - [X] Verify: sign up, sign in, token reaches backend on a test authenticated endpoint
 
-## 5. Document ingestion + embeddings
+## Phase 5 — Chat shell (vertical slice, stubbed)
+
+Goal: end-to-end chat UI streaming from FastAPI, no real retrieval yet.
+
+**Backend**
+
+- [ ] Chat thread CRUD: list threads, create thread, load message history
+- [ ] `POST /chat/stream` — accepts AI SDK message format, streams a stubbed assistant reply
+- [ ] Persist user + assistant messages to `chat_messages` after stream completes
+- [ ] `403` when user accesses another user's thread
+
+**Frontend**
+
+- [ ] React Router: login, chat list, chat thread routes
+- [ ] AI SDK chat primitives pointed at `POST /chat/stream` with Supabase bearer token
+- [ ] Thread sidebar (past conversations)
+- [ ] Basic message list + input + streaming indicator
+- [ ] Verify: create thread, send message, see streamed stub response, reload and see history
+
+## 6. Document ingestion + embeddings
 - [X] Download or seed the sample SEC corpus with `data/download.py`
 - [ ] Build ingestion logic to parse filings into raw documents
 - [ ] Chunk documents with source metadata (company, filing, page, section)
@@ -70,7 +89,7 @@ Goal: analysts can sign in with email; backend rejects unauthenticated requests.
 - [ ] Store documents, chunks, and embeddings in Supabase
 - [ ] Add citation metadata so each chunk can be traced back to a source page
 
-## 6. Retrieval and answer grounding
+## 7. Retrieval and answer grounding
 - [ ] Implement vector search over chunks in Supabase `pgvector`
 - [ ] Add full-text / SQL filters for company, filing year, section
 - [ ] Build a retrieval pipeline that returns top chunks plus source references
@@ -78,19 +97,19 @@ Goal: analysts can sign in with email; backend rejects unauthenticated requests.
 - [ ] Ensure the backend response includes the raw source text and citation details
 - [ ] Add safety logic so the model says “I don’t know” when the answer is not in the corpus
 
-## 7. Chat history
+## 8. Chat history
 - [ ] Create chat history tables and storage in the backend
 - [ ] Save analyst conversations and source-backed answers
 - [ ] Build a UI for analysts to review their past sessions
 
-## 8. Frontend app
+## 9. Frontend app
 - [ ] Install `@supabase/supabase-js`, routing, and UI dependencies
 - [ ] Create a query/chat page and submit questions to the backend
 - [ ] Display answers with citations and source passages
 - [ ] Add UI for selecting filings, companies, and years
 - [ ] Add conversation history / saved chats view
 
-## 9. Validation and client readiness
+## 10. Validation and client readiness
 - [ ] Test all sample questions from the client brief manually
 - [ ] Verify answers return cited source passages for every claim
 - [ ] Confirm no hallucinations or unsupported inference leaks through
@@ -98,7 +117,7 @@ Goal: analysts can sign in with email; backend rejects unauthenticated requests.
 - [ ] Validate analyst workflow: ask question, inspect source, save chat
 - [ ] Write a quick “pilot checklist” for the first 5 analysts
 
-## 10. Deployment and launch
+## 11. Deployment and launch
 - [ ] Choose a host for backend and frontend (Railway, Vercel, etc.)
 - [ ] Deploy backend, frontend, and connect to Supabase
 - [ ] Set production environment variables securely
@@ -111,9 +130,10 @@ Goal: analysts can sign in with email; backend rejects unauthenticated requests.
 1. Setup environment + Supabase
 2. Build backend data model
 3. Add auth
-4. Build ingestion
-5. Implement retrieval and grounding logic
-6. Add chat persistence
-7. Build frontend UI and connect it
-8. Test against the client brief
-9. Deploy and validate
+4. Build chat shell
+5. Build ingestion
+6. Implement retrieval and grounding logic
+7. Add chat persistence
+8. Build frontend UI and connect it
+9. Test against the client brief
+10. Deploy and validate
