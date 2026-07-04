@@ -4,6 +4,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auth import CurrentUserResponse, read_current_user
+from app.api.chat import register_chat_routes
 from app.auth import CurrentUser, get_current_user
 from app.config import settings
 
@@ -26,3 +27,6 @@ async def health_check() -> dict[str, str]:
 @app.get("/auth/me", response_model=CurrentUserResponse, tags=["auth"])
 async def read_auth_me(current_user: CurrentUser = Depends(get_current_user)) -> CurrentUserResponse:
     return await read_current_user(current_user)
+
+
+register_chat_routes(app)

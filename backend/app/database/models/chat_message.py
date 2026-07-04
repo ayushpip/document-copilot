@@ -6,14 +6,14 @@ from uuid import UUID, uuid4
 from sqlalchemy import ForeignKey, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.database.base import Base
+from app.database.base import Base, TimestampMixin
 
 if TYPE_CHECKING:
     from app.database.chat_thread import ChatThread
     from app.database.message_citation import MessageCitation
 
 
-class ChatMessage(Base):
+class ChatMessage(Base, TimestampMixin):
     """Individual message in a chat thread."""
 
     __tablename__ = "chat_messages"

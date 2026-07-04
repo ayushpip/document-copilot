@@ -10,6 +10,7 @@ from app.database.models import (
     User,
 )
 from app.database.supabase import create_service_role_client, create_user_client
+from app.database.session import SessionLocal, engine, get_session
 
 __all__ = [
     "Base",
@@ -22,4 +23,7 @@ __all__ = [
     "MessageCitation",
     "create_service_role_client",
     "create_user_client",
+    "engine",
+    "SessionLocal",
+    "get_session",
 ]
