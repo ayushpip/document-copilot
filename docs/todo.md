@@ -25,20 +25,20 @@ Goal: a running FastAPI service with a migrated Supabase schema.
 - [X] Init backend deps and project layout (backend-setup)
 - [X] app/config.py – settings module, fail fast on missing env vars
 - [X] app/main.py – FastAPI app, CORS, health check (GET /health)
-- [X] SQLAlchemy models in app/database/models.py:
+- [X] SQLAlchemy models in app/database/models/:
   - [X] users
   - [X] source_documents
   - [X] document_chunks (embedding + generated tsvector)
   - [X] chat_threads
   - [X] chat_messages
   - [X] message_citations
-- [ ] Alembic init + first migration:
-  - [ ] create extension if not exists vector
-  - [ ] vector (1536) embedding column
-  - [ ] generated tsvector column on chunks
-  - [ ] HNSW index (vector) + GIN index (full-text)
-  - [ ] RLS policies (users see only their own chats)
-- [ ] uv run alembic upgrade head against Supabase direct connection
+- [X] Alembic init + first migration:
+  - [X] create extension if not exists vector
+  - [X] vector (1536) embedding column
+  - [X] generated tsvector column on chunks
+  - [X] HNSW index (vector) + GIN index (full-text)
+  - [X] RLS policies (users see only their own chats)
+- [X] uv run alembic upgrade head against Supabase direct connection
 - [ ] app/database/supabase.py – user-scoped and service-role clients
 - [ ] Verify: uv run uvicorn app.main:app -reload → health check returns 200
 

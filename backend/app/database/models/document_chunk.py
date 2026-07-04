@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import ForeignKey, Integer, Text, Uuid
+from sqlalchemy import Computed, ForeignKey, Integer, Text, Uuid
+from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -29,6 +30,11 @@ class DocumentChunk(Base):
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     embedding: Mapped[Vector | None] = mapped_column(Vector(1536), nullable=True)
+    search_vector: Mapped[str] = mapped_column(
+        TSVECTOR,
+        Computed("to_tsvector('english', content)", persisted=True),
+        nullable=False,
+    )
 
     source_document: Mapped["SourceDocument"] = relationship("SourceDocument", back_populates="chunks")
     message_citations: Mapped[list["MessageCitation"]] = relationship(
