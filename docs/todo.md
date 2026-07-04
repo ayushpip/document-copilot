@@ -58,9 +58,9 @@ Goal: analysts can sign in with email; backend rejects unauthenticated requests.
 - [X] `src/lib/env.ts` — validate `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
 - [X] `src/lib/supabase.ts` — browser Supabase client
 - [X] `src/lib/http.ts` + `src/lib/api.ts` — fetch wrapper with automatic bearer token
-- [ ] Sign-in / sign-up pages (email only, no SSO)
-- [ ] Protected routes — redirect unauthenticated users to login
-- [ ] Verify: sign up, sign in, token reaches backend on a test authenticated endpoint
+- [X] Sign-in / sign-up pages (email only, no SSO)
+- [X] Protected routes — redirect unauthenticated users to login
+- [X] Verify: sign up, sign in, token reaches backend on a test authenticated endpoint
 
 ## 5. Document ingestion + embeddings
 - [X] Download or seed the sample SEC corpus with `data/download.py`
