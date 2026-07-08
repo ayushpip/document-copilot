@@ -97,13 +97,17 @@ Goal: SEC filings in the corpus are parsed, chunked, embedded, and stored in Sup
 - [X] Run ingestion on full sample corpus (25 filings × 5 companies)
 - [X] Verify: chunks exist in Supabase; spot-check a known passage (e.g. Apple revenue mix table)
 
-## 7. Retrieval and answer grounding
-- [ ] Implement vector search over chunks in Supabase `pgvector`
-- [ ] Add full-text / SQL filters for company, filing year, section
-- [ ] Build a retrieval pipeline that returns top chunks plus source references
-- [ ] Implement a backend endpoint that accepts analyst queries and returns grounded answers
-- [ ] Ensure the backend response includes the raw source text and citation details
-- [ ] Add safety logic so the model says “I don’t know” when the answer is not in the corpus
+## Phase 7 — Retrieval
+
+Goal: a user question returns ranked, relevant source passages.
+
+- [ ] `retrieval/queries.py` — pgvector semantic search over `document_chunks`
+- [ ] `retrieval/queries.py` — Postgres full-text search over `search_vector`
+- [ ] `retrieval/fusion.py` — Reciprocal Rank Fusion in Python
+- [ ] `retrieval/retriever.py` — query → fused ranked passages + neighbor chunks
+- [ ] Unit tests: fusion ranking, query assembly (mock DB)
+- [ ] Integration test (optional, `@pytest.mark.integration`): real query against ingested corpus
+- [ ] Verify: test queries from [client-brief](client-brief.md) return relevant chunks (manual or scripted)
 
 ## 8. Chat history
 - [ ] Create chat history tables and storage in the backend
