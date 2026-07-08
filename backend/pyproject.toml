@@ -36,3 +36,8 @@ dev = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: tests that call external services or the real Supabase corpus",
+]
