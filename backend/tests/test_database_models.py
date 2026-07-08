@@ -10,6 +10,7 @@ def test_models_are_available_from_separate_modules() -> None:
     assert User.__tablename__ == "users"
     assert SourceDocument.__tablename__ == "source_documents"
     assert DocumentChunk.__tablename__ == "document_chunks"
+    assert "metadata" in DocumentChunk.__table__.columns
     assert ChatThread.__tablename__ == "chat_threads"
     assert ChatMessage.__tablename__ == "chat_messages"
     assert MessageCitation.__tablename__ == "message_citations"

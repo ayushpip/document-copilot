@@ -87,15 +87,15 @@ Goal: SEC filings in the corpus are parsed, chunked, embedded, and stored in Sup
 
 - [X] `ingest/` scripts (or CLI entrypoint) for one-off corpus loading
 - [X] HTML → normalized Markdown extraction (preserve page/section metadata)
-- [ ] Chunking strategy (size + overlap; store chunk index, page, section, ticker, filing type, year)
+- [X] Chunking strategy (size + overlap; store chunk index, page, section, ticker, filing type, year)
 - [X] Write `source_documents` rows with filing metadata from `manifest.json`
-- [ ] Write `document_chunks` rows with text + metadata
-- [ ] OpenAI embedding generation → store `vector(1536)` per chunk
-- [ ] Generated `tsvector` populated for full-text search
-- [ ] Idempotent re-run (skip already-ingested documents)
-- [ ] Unit tests: chunking logic, metadata extraction
-- [ ] Run ingestion on full sample corpus (25 filings × 5 companies)
-- [ ] Verify: chunks exist in Supabase; spot-check a known passage (e.g. Apple revenue mix table)
+- [X] Write `document_chunks` rows with text + metadata
+- [X] OpenAI embedding generation → store `vector(1536)` per chunk
+- [X] Generated `tsvector` populated for full-text search
+- [X] Idempotent re-run (skip already-ingested documents)
+- [X] Unit tests: chunking logic, metadata extraction
+- [X] Run ingestion on full sample corpus (25 filings × 5 companies)
+- [X] Verify: chunks exist in Supabase; spot-check a known passage (e.g. Apple revenue mix table)
 
 ## 7. Retrieval and answer grounding
 - [ ] Implement vector search over chunks in Supabase `pgvector`

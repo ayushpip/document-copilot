@@ -5,6 +5,7 @@ from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import Computed, ForeignKey, Integer, Text, Uuid
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +30,7 @@ class DocumentChunk(Base):
     )
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    chunk_metadata: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, default=dict)
     embedding: Mapped[Vector | None] = mapped_column(Vector(1536), nullable=True)
     search_vector: Mapped[str] = mapped_column(
         TSVECTOR,
