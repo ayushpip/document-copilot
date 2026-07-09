@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     openai_api_key: str
     openai_embedding_model: str = "text-embedding-3-small"
     openai_embedding_dimensions: int = 1536
+    openai_chat_model: str = "openai:gpt-4o-mini"
 
     # Server
     allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173"

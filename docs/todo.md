@@ -111,25 +111,29 @@ Goal: a user question returns ranked, relevant source passages.
 
 ## Phase 8 — LLM agent & grounding
 
-- [ ] `assistant/instructions.md` — product contract (cite everything, refuse to invent, no stock picks)
-- [ ] PydanticAI agent with typed deps (`DocumentAgentDeps`) and output (`GroundedAnswer`)
-- [ ] Agent tools: `search_filings`, `read_chunk`, `read_surrounding_chunks`
-- [ ] `chat/orchestrator.py` — one turn: retrieve → agent → validate → stream → persist
-- [ ] `grounding/validator.py` — every citation maps to a retrieved passage; fail closed on violation
-- [ ] `chat/streaming.py` — AI SDK-compatible stream (text deltas + citation metadata parts)
-- [ ] Persist `message_citations` linked to assistant messages
-- [ ] Unit tests: citation validation, grounding enforcement, message conversion
-- [ ] Verify against [client-brief example questions](client-brief.md#example-analyst-questions):
-  - [ ] Answers cite specific filings and pages
-  - [ ] Under-specified questions get "not enough evidence" responses
-  - [ ] Question 10 (generative AI margins) refuses to infer beyond filings
+- [X] `assistant/instructions.md` — product contract (cite everything, refuse to invent, no stock picks)
+- [X] PydanticAI agent with typed deps (`DocumentAgentDeps`) and output (`GroundedAnswer`)
+- [X] Agent tools: `search_filings`, `read_chunk`, `read_surrounding_chunks`
+- [X] `chat/orchestrator.py` — one turn: retrieve → agent → validate → stream → persist
+- [X] `grounding/validator.py` — every citation maps to a retrieved passage; fail closed on violation
+- [X] `chat/streaming.py` — AI SDK-compatible stream (text deltas + citation metadata parts)
+- [X] Persist `message_citations` linked to assistant messages
+- [X] Unit tests: citation validation, grounding enforcement, message conversion
+- [X] Verify against [client-brief example questions](client-brief.md#example-analyst-questions):
+  - [X] Answers cite specific filings and pages
+  - [X] Under-specified questions get "not enough evidence" responses
+  - [X] Question 10 (generative AI margins) refuses to infer beyond filings
 
-## 9. Frontend app
-- [ ] Install `@supabase/supabase-js`, routing, and UI dependencies
-- [ ] Create a query/chat page and submit questions to the backend
-- [ ] Display answers with citations and source passages
-- [ ] Add UI for selecting filings, companies, and years
-- [ ] Add conversation history / saved chats view
+## Phase 9 — Trust UI: citations & source passages
+
+Goal: analysts can verify every claim in one click — this is what makes the product usable.
+
+- [ ] Citation chips/links on assistant messages (company, filing type, date, page/section)
+- [ ] Source passage panel — show underlying excerpt for selected citation
+- [ ] Empty states (no threads, no corpus match)
+- [ ] Error states (auth expired, retrieval failure, grounding failure, network/CORS)
+- [ ] Loading/streaming status during assistant run
+- [ ] Verify: click a citation → see the exact passage from the filing
 
 ## 10. Validation and client readiness
 - [ ] Test all sample questions from the client brief manually

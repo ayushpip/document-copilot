@@ -3,14 +3,17 @@
 from collections.abc import Iterable
 from uuid import UUID
 
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser, get_current_user
 from app.chat import service
+from app.chat.orchestrator import run_chat_turn
 from app.chat.schemas import ChatMessageResponse, ChatStreamRequest, ChatThreadCreate, ChatThreadResponse
+from app.chat.streaming import stream_text_deltas
 from app.database.session import get_session
+from app.grounding import GroundingValidationError
 
 
 def get_app_user(current_user: CurrentUser, db: Session):
@@ -57,15 +60,19 @@ async def stream_chat(
     user = get_app_user(current_user, db)
     thread = service.get_owned_thread(db, user, payload.thread_id)
     user_message = service.latest_user_message(payload.messages)
-    service.save_message(db, thread, "user", user_message.content.strip())
+    try:
+        turn = run_chat_turn(db, thread, user_message.content)
+    except GroundingValidationError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Assistant response failed grounding validation.",
+        ) from exc
     db.commit()
 
     def generate() -> Iterable[str]:
-        chunks = list(service.stream_stub_reply())
-        for chunk in chunks:
+        for chunk in stream_text_deltas(turn.assistant_message.content):
             yield chunk
-
-        service.persist_assistant_message(payload.thread_id, "".join(chunks))
 
     return StreamingResponse(generate(), media_type="text/plain")
 
