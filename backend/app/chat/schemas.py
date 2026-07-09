@@ -29,6 +29,21 @@ class ChatMessageResponse(BaseModel):
     chat_thread_id: UUID
     role: MessageRole
     content: str
+    citations: list["ChatCitationResponse"] = Field(default_factory=list)
+
+
+class ChatCitationResponse(BaseModel):
+    chunk_id: UUID
+    company: str
+    filing_type: str
+    filing_year: int
+    filing_url: str | None
+    filing_date: str | None = None
+    report_date: str | None = None
+    section: str | None = None
+    chunk_index: int
+    content: str
+    neighbor_chunks: list[str] = Field(default_factory=list)
 
 
 class AiSdkMessage(BaseModel):

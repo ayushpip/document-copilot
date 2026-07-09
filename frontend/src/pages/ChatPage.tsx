@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 
 import { MessageComposer } from '@/components/chat/MessageComposer'
 import { MessageList, type DisplayMessage } from '@/components/chat/MessageList'
+import { SourcePassagePanel } from '@/components/chat/SourcePassagePanel'
 import { ThreadSidebar } from '@/components/chat/ThreadSidebar'
 import { Button } from '@/components/ui/button'
 import {
@@ -12,6 +13,7 @@ import {
   loadMessages,
   streamChat,
   type AiSdkMessage,
+  type ChatCitation,
   type ChatThread,
 } from '@/lib/chat-api'
 import { ApiError } from '@/lib/http'
@@ -24,12 +26,38 @@ type ChatStatus =
   | { state: 'error'; message: string }
   | { state: 'forbidden' }
 
-function toDisplayMessages(messages: { id: string; role: DisplayMessage['role']; content: string }[]) {
+const RUN_STAGES = [
+  'Searching filings...',
+  'Ranking relevant passages...',
+  'Checking source evidence...',
+  'Drafting grounded answer...',
+  'Validating citations...',
+]
+
+function toDisplayMessages(messages: { id: string; role: DisplayMessage['role']; content: string; citations?: ChatCitation[] }[]) {
   return messages.map((message) => ({
     id: message.id,
     role: message.role,
     content: message.content,
+    citations: message.citations ?? [],
   }))
+}
+
+function errorMessage(error: unknown) {
+  if (!(error instanceof ApiError)) {
+    return error instanceof Error ? error.message : 'Unable to send this message.'
+  }
+
+  if (error.status === 401) {
+    return 'Session expired. Please sign in again.'
+  }
+  if (error.status === 502) {
+    return 'The assistant could not validate its citations. Try rephrasing or narrowing the question.'
+  }
+  if (error.isNetworkError || error.status === 0) {
+    return 'Network or CORS error. Check that the backend is running and reachable.'
+  }
+  return error.message
 }
 
 export function ChatPage() {
@@ -40,6 +68,8 @@ export function ChatPage() {
   const [messages, setMessages] = useState<DisplayMessage[]>([])
   const [isLoadingThreads, setIsLoadingThreads] = useState(true)
   const [status, setStatus] = useState<ChatStatus>({ state: 'idle' })
+  const [runStage, setRunStage] = useState<string | null>(null)
+  const [selectedCitation, setSelectedCitation] = useState<ChatCitation | null>(null)
 
   async function refreshThreads() {
     setIsLoadingThreads(true)
@@ -81,6 +111,7 @@ export function ChatPage() {
       queueMicrotask(() => {
         setMessages([])
         setStatus({ state: 'idle' })
+        setSelectedCitation(null)
       })
       return
     }
@@ -97,6 +128,7 @@ export function ChatPage() {
         if (isMounted) {
           setMessages(toDisplayMessages(history))
           setStatus({ state: 'idle' })
+          setSelectedCitation(null)
         }
       })
       .catch((error: unknown) => {
@@ -111,7 +143,7 @@ export function ChatPage() {
 
         setStatus({
           state: 'error',
-          message: error instanceof Error ? error.message : 'Unable to load this chat.',
+          message: errorMessage(error),
         })
       })
 
@@ -130,31 +162,52 @@ export function ChatPage() {
 
   async function handleSend(content: string) {
     setStatus({ state: 'streaming' })
-    const activeThread = threadId ? { id: threadId } : await createThread()
-
-    if (!threadId) {
-      await refreshThreads()
-      navigate(`/chat/${activeThread.id}`, { replace: true })
-    }
-
-    const userMessage: DisplayMessage = { id: crypto.randomUUID(), role: 'user', content }
-    const assistantMessage: DisplayMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' }
-    const nextMessages = [...messages, userMessage, assistantMessage]
-    setMessages(nextMessages)
+    setRunStage(RUN_STAGES[0])
+    let stageIndex = 0
+    let hasReceivedText = false
+    const stageTimer = window.setInterval(() => {
+      if (hasReceivedText) {
+        return
+      }
+      stageIndex = Math.min(stageIndex + 1, RUN_STAGES.length - 1)
+      setRunStage(RUN_STAGES[stageIndex])
+    }, 1800)
 
     try {
+      const activeThread = threadId ? { id: threadId } : await createThread()
+
+      if (!threadId) {
+        await refreshThreads()
+        navigate(`/chat/${activeThread.id}`, { replace: true })
+      }
+
+      const userMessage: DisplayMessage = { id: crypto.randomUUID(), role: 'user', content }
+      const assistantMessage: DisplayMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', citations: [] }
+      const nextMessages = [...messages, userMessage, assistantMessage]
+      setMessages(nextMessages)
+      setSelectedCitation(null)
+
       await streamChat(activeThread.id, [...aiMessages, { role: 'user', content }], (chunk) => {
+        if (!hasReceivedText) {
+          hasReceivedText = true
+          window.clearInterval(stageTimer)
+          setRunStage('Writing grounded answer...')
+        }
         assistantMessage.content += chunk
         setMessages((current) =>
           current.map((message) => (message.id === assistantMessage.id ? { ...assistantMessage } : message)),
         )
       })
 
+      setRunStage('Saving answer...')
       const persistedMessages = await loadMessages(activeThread.id)
       setMessages(toDisplayMessages(persistedMessages))
       await refreshThreads()
       setStatus({ state: 'idle' })
+      setRunStage(null)
     } catch (error) {
+      window.clearInterval(stageTimer)
+      setRunStage(null)
       if (error instanceof ApiError && error.status === 403) {
         setStatus({ state: 'forbidden' })
         return
@@ -162,13 +215,15 @@ export function ChatPage() {
 
       setStatus({
         state: 'error',
-        message: error instanceof Error ? error.message : 'Unable to send this message.',
+        message: errorMessage(error),
       })
+    } finally {
+      window.clearInterval(stageTimer)
     }
   }
 
   return (
-    <main className="grid h-svh grid-cols-[280px_1fr] bg-background text-foreground">
+    <main className="grid h-svh grid-cols-[280px_minmax(0,1fr)_360px] bg-background text-foreground">
       <ThreadSidebar
         threads={threads}
         activeThreadId={threadId}
@@ -198,7 +253,15 @@ export function ChatPage() {
               </div>
             </div>
           ) : null}
-          {status.state !== 'forbidden' ? <MessageList messages={messages} isStreaming={status.state === 'streaming'} /> : null}
+          {status.state !== 'forbidden' ? (
+            <MessageList
+              messages={messages}
+              isStreaming={status.state === 'streaming'}
+              runStage={runStage}
+              selectedCitation={selectedCitation}
+              onSelectCitation={setSelectedCitation}
+            />
+          ) : null}
         </div>
 
         {status.state === 'error' ? (
@@ -207,6 +270,8 @@ export function ChatPage() {
 
         <MessageComposer disabled={status.state === 'loading' || status.state === 'streaming'} onSubmit={handleSend} />
       </section>
+
+      <SourcePassagePanel citation={selectedCitation} />
     </main>
   )
 }

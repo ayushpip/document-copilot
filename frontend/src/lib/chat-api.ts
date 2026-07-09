@@ -17,6 +17,21 @@ export type ChatMessage = {
   chat_thread_id: string
   role: ChatMessageRole
   content: string
+  citations: ChatCitation[]
+}
+
+export type ChatCitation = {
+  chunk_id: string
+  company: string
+  filing_type: string
+  filing_year: number
+  filing_url: string | null
+  filing_date: string | null
+  report_date: string | null
+  section: string | null
+  chunk_index: number
+  content: string
+  neighbor_chunks: string[]
 }
 
 export type AiSdkMessage = {

@@ -5,19 +5,64 @@ from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser, get_current_user
 from app.chat import service
 from app.chat.orchestrator import run_chat_turn
-from app.chat.schemas import ChatMessageResponse, ChatStreamRequest, ChatThreadCreate, ChatThreadResponse
+from app.chat.schemas import ChatCitationResponse, ChatMessageResponse, ChatStreamRequest, ChatThreadCreate, ChatThreadResponse
 from app.chat.streaming import stream_text_deltas
+from app.database.models import ChatMessage, DocumentChunk
 from app.database.session import get_session
 from app.grounding import GroundingValidationError
 
 
 def get_app_user(current_user: CurrentUser, db: Session):
     return service.get_or_create_app_user(db, current_user.user_id)
+
+
+def citation_neighbor_chunks(db: Session, chunk: DocumentChunk, window: int = 1) -> list[str]:
+    statement = (
+        select(DocumentChunk.content)
+        .where(DocumentChunk.source_document_id == chunk.source_document_id)
+        .where(DocumentChunk.chunk_index >= chunk.chunk_index - window)
+        .where(DocumentChunk.chunk_index <= chunk.chunk_index + window)
+        .where(DocumentChunk.id != chunk.id)
+        .order_by(DocumentChunk.chunk_index)
+    )
+    return list(db.scalars(statement))
+
+
+def chat_message_response(db: Session, message: ChatMessage) -> ChatMessageResponse:
+    citations = []
+    for citation in message.citations:
+        chunk = citation.chunk
+        source_document = chunk.source_document
+        metadata = chunk.chunk_metadata or {}
+        citations.append(
+            ChatCitationResponse(
+                chunk_id=chunk.id,
+                company=source_document.company,
+                filing_type=source_document.filing_type,
+                filing_year=source_document.filing_year,
+                filing_url=source_document.filing_url,
+                filing_date=metadata.get("filing_date"),
+                report_date=metadata.get("report_date"),
+                section=metadata.get("section"),
+                chunk_index=chunk.chunk_index,
+                content=chunk.content,
+                neighbor_chunks=citation_neighbor_chunks(db, chunk),
+            )
+        )
+
+    return ChatMessageResponse(
+        id=message.id,
+        chat_thread_id=message.chat_thread_id,
+        role=message.role,
+        content=message.content,
+        citations=citations,
+    )
 
 
 async def list_chat_threads(
@@ -49,7 +94,7 @@ async def read_chat_messages(
     user = get_app_user(current_user, db)
     thread = service.get_owned_thread(db, user, thread_id)
     messages = service.load_message_history(db, thread)
-    return [ChatMessageResponse.model_validate(message) for message in messages]
+    return [chat_message_response(db, message) for message in messages]
 
 
 async def stream_chat(
