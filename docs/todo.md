@@ -109,10 +109,20 @@ Goal: a user question returns ranked, relevant source passages.
 - [X] Integration test (optional, `@pytest.mark.integration`): real query against ingested corpus
 - [X] Verify: test queries from [client-brief](client-brief.md) return relevant chunks (manual or scripted)
 
-## 8. Chat history
-- [ ] Create chat history tables and storage in the backend
-- [ ] Save analyst conversations and source-backed answers
-- [ ] Build a UI for analysts to review their past sessions
+## Phase 8 — LLM agent & grounding
+
+- [ ] `assistant/instructions.md` — product contract (cite everything, refuse to invent, no stock picks)
+- [ ] PydanticAI agent with typed deps (`DocumentAgentDeps`) and output (`GroundedAnswer`)
+- [ ] Agent tools: `search_filings`, `read_chunk`, `read_surrounding_chunks`
+- [ ] `chat/orchestrator.py` — one turn: retrieve → agent → validate → stream → persist
+- [ ] `grounding/validator.py` — every citation maps to a retrieved passage; fail closed on violation
+- [ ] `chat/streaming.py` — AI SDK-compatible stream (text deltas + citation metadata parts)
+- [ ] Persist `message_citations` linked to assistant messages
+- [ ] Unit tests: citation validation, grounding enforcement, message conversion
+- [ ] Verify against [client-brief example questions](client-brief.md#example-analyst-questions):
+  - [ ] Answers cite specific filings and pages
+  - [ ] Under-specified questions get "not enough evidence" responses
+  - [ ] Question 10 (generative AI margins) refuses to infer beyond filings
 
 ## 9. Frontend app
 - [ ] Install `@supabase/supabase-js`, routing, and UI dependencies
