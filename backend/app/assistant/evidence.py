@@ -58,6 +58,7 @@ class EvidenceRow(BaseModel):
     metric: str
     value: float
     unit: str = "USD millions"
+    source_filing_year: int
     source_chunk_id: UUID
     source_chunk_index: int
     quote: str = Field(min_length=1)
@@ -215,6 +216,7 @@ def _table_rows_from_passage(passage: RetrievedPassage) -> list[EvidenceRow]:
                         metric=metric,
                         value=value,
                         unit=unit,
+                        source_filing_year=passage.filing_year,
                         source_chunk_id=passage.chunk_id,
                         source_chunk_index=passage.chunk_index,
                         quote=row_line.strip(),
@@ -274,6 +276,7 @@ def _flattened_rows_from_passage(passage: RetrievedPassage, text: str) -> list[E
                 metric=metric,
                 value=value,
                 unit="USD millions",
+                source_filing_year=passage.filing_year,
                 source_chunk_id=passage.chunk_id,
                 source_chunk_index=passage.chunk_index,
                 quote=match.group(0).strip(),
@@ -379,7 +382,7 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
     calculations = []
     seen_calculations = set()
     conflicted_keys = {
-        (row.company, row.filing_year, _canonical_metric(row.metric))
+        (row.company, row.filing_year, _canonical_metric(row.metric), row.source_filing_year)
         for row in rows
         if len(
             {
@@ -388,20 +391,21 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
                 if candidate.company == row.company
                 and candidate.filing_year == row.filing_year
                 and _canonical_metric(candidate.metric) == _canonical_metric(row.metric)
+                and candidate.source_filing_year == row.source_filing_year
             }
         )
         > 1
     }
-    rows_by_company_metric: dict[tuple[str, str], list[EvidenceRow]] = defaultdict(list)
-    rows_by_company_year: dict[tuple[str, int], list[EvidenceRow]] = defaultdict(list)
+    rows_by_company_metric_source: dict[tuple[str, str, int], list[EvidenceRow]] = defaultdict(list)
+    rows_by_company_year_source: dict[tuple[str, int, int], list[EvidenceRow]] = defaultdict(list)
 
     for row in rows:
-        if (row.company, row.filing_year, _canonical_metric(row.metric)) in conflicted_keys:
+        if (row.company, row.filing_year, _canonical_metric(row.metric), row.source_filing_year) in conflicted_keys:
             continue
-        rows_by_company_metric[(row.company, _canonical_metric(row.metric))].append(row)
-        rows_by_company_year[(row.company, row.filing_year)].append(row)
+        rows_by_company_metric_source[(row.company, _canonical_metric(row.metric), row.source_filing_year)].append(row)
+        rows_by_company_year_source[(row.company, row.filing_year, row.source_filing_year)].append(row)
 
-    for metric_rows in rows_by_company_metric.values():
+    for metric_rows in rows_by_company_metric_source.values():
         sorted_rows = sorted(metric_rows, key=lambda row: row.filing_year)
         for previous, current in zip(sorted_rows, sorted_rows[1:], strict=False):
             if current.filing_year != previous.filing_year + 1:
@@ -410,11 +414,11 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
                 calculate_growth_percentage(current, previous),
                 calculate_absolute_change(current, previous),
             ]:
-                if calculation and (calculation.label, calculation.formula) not in seen_calculations:
-                    seen_calculations.add((calculation.label, calculation.formula))
+                if calculation and calculation.label not in seen_calculations:
+                    seen_calculations.add(calculation.label)
                     calculations.append(calculation)
 
-    for company_year_rows in rows_by_company_year.values():
+    for company_year_rows in rows_by_company_year_source.values():
         income_rows = [row for row in company_year_rows if _canonical_metric(row.metric).endswith("operating income")]
         revenue_rows = [row for row in company_year_rows if _canonical_metric(row.metric).endswith("revenue")]
         for operating_income in income_rows:
@@ -429,8 +433,8 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
             )
             if revenue:
                 calculation = calculate_margin_percentage(operating_income, revenue)
-                if calculation and (calculation.label, calculation.formula) not in seen_calculations:
-                    seen_calculations.add((calculation.label, calculation.formula))
+                if calculation and calculation.label not in seen_calculations:
+                    seen_calculations.add(calculation.label)
                     calculations.append(calculation)
 
     return calculations
@@ -487,12 +491,30 @@ def _evidence_conflicts(rows: list[EvidenceRow]) -> list[str]:
     for row in rows:
         values_by_key[(row.company, row.filing_year, _canonical_metric(row.metric))].add(row.value)
 
-    return [
+    conflicts = [
         f"{company} {metric} {year} has multiple extracted values: "
         f"{', '.join(f'{value:g}' for value in sorted(values))}"
         for (company, year, metric), values in sorted(values_by_key.items())
         if len(values) > 1
     ]
+    rows_by_company_metric: dict[tuple[str, str], list[EvidenceRow]] = defaultdict(list)
+    for row in rows:
+        rows_by_company_metric[(row.company, _canonical_metric(row.metric))].append(row)
+
+    for (company, metric), metric_rows in sorted(rows_by_company_metric.items()):
+        sources_by_year: dict[int, set[int]] = defaultdict(set)
+        for row in metric_rows:
+            sources_by_year[row.filing_year].add(row.source_filing_year)
+        for previous_year, current_year in zip(sorted(sources_by_year), sorted(sources_by_year)[1:], strict=False):
+            if current_year != previous_year + 1:
+                continue
+            common_sources = sources_by_year[previous_year] & sources_by_year[current_year]
+            if not common_sources:
+                conflicts.append(
+                    f"{company} {metric} {previous_year}-{current_year} has no single source filing covering both years"
+                )
+
+    return conflicts
 
 
 def build_evidence_brief(question: str, retrieval_result: RetrievalResult) -> EvidenceBrief:
@@ -526,13 +548,13 @@ def format_evidence_brief(brief: EvidenceBrief, *, max_rows: int = 80, max_calcu
         return "No structured numeric evidence was extracted from the retrieved passages."
 
     row_lines = [
-        "| company | year | metric | value | unit | chunk | quote |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| company | year | metric | value | unit | source filing | chunk | quote |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in brief.rows[:max_rows]:
         row_lines.append(
             "| "
-            f"{row.company} | {row.filing_year} | {row.metric} | {row.value:g} | {row.unit} | "
+            f"{row.company} | {row.filing_year} | {row.metric} | {row.value:g} | {row.unit} | {row.source_filing_year} filing | "
             f"{row.source_chunk_id} | {row.quote} |"
         )
 

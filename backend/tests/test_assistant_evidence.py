@@ -172,6 +172,64 @@ Revenue, 1 = 87,464.
     assert not any("Intelligent Cloud Revenue growth" in calculation.label for calculation in brief.calculations)
 
 
+def test_build_evidence_brief_does_not_calculate_across_different_source_filings() -> None:
+    old_basis_chunk_id = uuid4()
+    recast_basis_chunk_id = uuid4()
+    result = RetrievalResult(
+        query="Compare Microsoft Intelligent Cloud revenue growth from 2022-2025.",
+        passages=[
+            RetrievedPassage(
+                chunk_id=old_basis_chunk_id,
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2024,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=22,
+                content=(
+                    "|  | 2023 | 2022 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Intelligent Cloud |  |  |\n"
+                    "| Revenue | 87,907 | 74,965 |\n"
+                    "| Operating Income | 37,884 | 33,203 |"
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            ),
+            RetrievedPassage(
+                chunk_id=recast_basis_chunk_id,
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=21,
+                content=(
+                    "|  | 2025 | 2024 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Intelligent Cloud |  |  |\n"
+                    "| Revenue | 106,265 | 87,464 |\n"
+                    "| Operating Income | 44,589 | 37,813 |"
+                ),
+                metadata={},
+                rank=2,
+                fused_score=0.1,
+            ),
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="MSFT"),
+    )
+
+    brief = build_evidence_brief("Compare Microsoft Intelligent Cloud revenue growth from 2022-2025.", result)
+    labels = {calculation.label for calculation in brief.calculations}
+
+    assert "MSFT Intelligent Cloud Revenue growth 2022-2023" in labels
+    assert "MSFT Intelligent Cloud Revenue growth 2024-2025" in labels
+    assert "MSFT Intelligent Cloud Revenue growth 2023-2024" not in labels
+    assert any("no single source filing" in conflict for conflict in brief.conflicts)
+
+
 def test_build_evidence_brief_only_keeps_totals_when_question_needs_mix_context() -> None:
     result = make_result(
         """

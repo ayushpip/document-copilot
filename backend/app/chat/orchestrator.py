@@ -62,6 +62,11 @@ def persist_message_citations(db: Session, assistant_message: ChatMessage, answe
         db.add(MessageCitation(chat_message_id=assistant_message.id, document_chunk_id=citation.chunk_id))
 
 
+def _format_calculation_value(value: float, unit: str) -> str:
+    separator = "" if unit == "%" else " "
+    return f"{value:g}{separator}{unit}"
+
+
 def fallback_grounded_answer(evidence_brief: EvidenceBrief) -> GroundedAnswer | None:
     """Build a conservative answer from verified evidence if the model output fails validation."""
 
@@ -85,14 +90,14 @@ def fallback_grounded_answer(evidence_brief: EvidenceBrief) -> GroundedAnswer | 
     evidence_lines = []
     for metric, metric_rows in sorted(rows_by_metric.items()):
         values = ", ".join(
-            f"{row.filing_year}: {row.value:g} {row.unit} (chunk {row.source_chunk_index})"
+            f"{row.filing_year}: {row.value:g} {row.unit} ({row.source_filing_year} filing, chunk {row.source_chunk_index})"
             for row in sorted(metric_rows, key=lambda item: (item.filing_year, item.value))
         )
         evidence_lines.append(f"- {metric}: {values}")
     sections.append("\nEvidence:\n" + "\n".join(evidence_lines[:24]))
 
     calculation_lines = [
-        f"- {calculation.label}: {calculation.value:g}{calculation.unit}"
+        f"- {calculation.label}: {_format_calculation_value(calculation.value, calculation.unit)}"
         for calculation in evidence_brief.calculations
     ]
     if calculation_lines:
