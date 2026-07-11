@@ -22,6 +22,18 @@ class RetrievalFilters(BaseModel):
     filing_type: str | None = None
 
 
+class RetrievalQueryPlan(BaseModel):
+    """LLM-planned retrieval queries and optional inferred filters."""
+
+    original_query: str
+    semantic_query: str
+    full_text_query: str
+    keywords: list[str] = Field(default_factory=list)
+    companies: list[str] = Field(default_factory=list)
+    filing_years: list[int] = Field(default_factory=list)
+    filing_type: str | None = None
+
+
 class SearchHit(BaseModel):
     """Single ranked hit from one retrieval backend."""
 
@@ -77,6 +89,7 @@ class RetrievalResult(BaseModel):
     """Complete retrieval response for one user query."""
 
     query: str
+    query_plan: RetrievalQueryPlan | None = None
     passages: list[RetrievedPassage]
     settings: RetrievalSettings
     filters: RetrievalFilters

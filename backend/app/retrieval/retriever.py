@@ -3,8 +3,18 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from app.retrieval.fusion import reciprocal_rank_fusion
+from app.retrieval.keywords import plan_retrieval_query
 from app.retrieval.queries import embed_query, fetch_hits_by_ids, fetch_neighbor_chunks, full_text_search, semantic_search
-from app.retrieval.schemas import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings
+from app.retrieval.schemas import RetrievedPassage, RetrievalFilters, RetrievalQueryPlan, RetrievalResult, RetrievalSettings
+
+
+def _merge_filters(user_filters: RetrievalFilters, planned_filters: RetrievalQueryPlan) -> RetrievalFilters:
+    return RetrievalFilters(
+        company=user_filters.company or (planned_filters.companies[0] if len(planned_filters.companies) == 1 else None),
+        filing_year=user_filters.filing_year
+        or (planned_filters.filing_years[0] if len(planned_filters.filing_years) == 1 else None),
+        filing_type=user_filters.filing_type or planned_filters.filing_type,
+    )
 
 
 def retrieve_source_passages(
@@ -21,10 +31,12 @@ def retrieve_source_passages(
 
     filters = filters or RetrievalFilters()
     retrieval_settings = retrieval_settings or RetrievalSettings()
+    query_plan = plan_retrieval_query(clean_query)
+    effective_filters = _merge_filters(filters, query_plan)
 
-    query_embedding = embed_query(clean_query)
-    semantic_hits = semantic_search(db, query_embedding, retrieval_settings.candidate_k, filters)
-    full_text_hits = full_text_search(db, clean_query, retrieval_settings.candidate_k, filters)
+    query_embedding = embed_query(query_plan.semantic_query)
+    semantic_hits = semantic_search(db, query_embedding, retrieval_settings.candidate_k, effective_filters)
+    full_text_hits = full_text_search(db, query_plan.full_text_query, retrieval_settings.candidate_k, effective_filters)
     fused_hits = reciprocal_rank_fusion([semantic_hits, full_text_hits], k=retrieval_settings.rrf_k)[
         : retrieval_settings.final_k
     ]
@@ -56,4 +68,10 @@ def retrieve_source_passages(
         for fused_hit, base_hit in ordered_pairs
     ]
 
-    return RetrievalResult(query=clean_query, passages=passages, settings=retrieval_settings, filters=filters)
+    return RetrievalResult(
+        query=clean_query,
+        query_plan=query_plan,
+        passages=passages,
+        settings=retrieval_settings,
+        filters=effective_filters,
+    )

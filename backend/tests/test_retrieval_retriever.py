@@ -33,6 +33,16 @@ def test_retrieve_source_passages_orchestrates_hybrid_retrieval(monkeypatch) -> 
         calls["embed_query"] = query
         return [0.1, 0.2, 0.3]
 
+    def fake_plan_retrieval_query(query):
+        calls["plan_query"] = query
+        return retriever.RetrievalQueryPlan(
+            original_query=query,
+            semantic_query="Apple revenue category mix",
+            full_text_query="iPhone Services Mac iPad Wearables net sales",
+            keywords=["iPhone", "Services"],
+            companies=["AAPL"],
+        )
+
     def fake_semantic_search(db, query_embedding, limit, filters):
         calls["semantic"] = (query_embedding, limit, filters)
         return [shared, semantic_only]
@@ -50,6 +60,7 @@ def test_retrieve_source_passages_orchestrates_hybrid_retrieval(monkeypatch) -> 
         return {hit.chunk_id: [f"neighbor for {hit.chunk_index}"] for hit in hits}
 
     monkeypatch.setattr(retriever, "embed_query", fake_embed_query)
+    monkeypatch.setattr(retriever, "plan_retrieval_query", fake_plan_retrieval_query)
     monkeypatch.setattr(retriever, "semantic_search", fake_semantic_search)
     monkeypatch.setattr(retriever, "full_text_search", fake_full_text_search)
     monkeypatch.setattr(retriever, "fetch_hits_by_ids", fake_fetch_hits_by_ids)
@@ -63,11 +74,14 @@ def test_retrieve_source_passages_orchestrates_hybrid_retrieval(monkeypatch) -> 
     )
 
     assert result.query == "Apple revenue mix"
+    assert result.query_plan is not None
+    assert result.query_plan.full_text_query == "iPhone Services Mac iPad Wearables net sales"
     assert len(result.passages) == 2
     assert result.passages[0].chunk_id == shared_id
     assert result.passages[0].semantic_rank == 1
     assert result.passages[0].full_text_rank == 2
     assert result.passages[0].neighbor_chunks == ["neighbor for 10"]
     assert calls["semantic"][1] == 2
-    assert calls["full_text"][0] == "Apple revenue mix"
+    assert calls["embed_query"] == "Apple revenue category mix"
+    assert calls["full_text"][0] == "iPhone Services Mac iPad Wearables net sales"
     assert calls["neighbors"][1] == 1
