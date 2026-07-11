@@ -1,17 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.assistant import DocumentAgentDeps, GroundedAnswer, run_document_agent
+from app.assistant import DocumentAgentDeps, GroundedAnswer, run_document_agent, run_document_agent_async
 from app.chat import service
 from app.database.models import ChatMessage, ChatThread, MessageCitation
 from app.grounding import repair_grounded_answer, validate_grounded_answer
 from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings, retrieve_source_passages
 
 AgentRunner = Callable[[str, DocumentAgentDeps], GroundedAnswer]
+AsyncAgentRunner = Callable[[str, DocumentAgentDeps], Awaitable[GroundedAnswer]]
 
 
 @dataclass
@@ -75,6 +76,39 @@ def run_chat_turn(
 
     deps = DocumentAgentDeps(db=db, retrieval_result=retrieval_result)
     answer = agent_runner(clean_question, deps)
+    answer = repair_grounded_answer(answer, retrieval_result)
+    validate_grounded_answer(answer, retrieval_result)
+
+    assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
+    persist_message_citations(db, assistant_message, answer)
+
+    return ChatTurnResult(
+        user_message=user_message,
+        assistant_message=assistant_message,
+        answer=answer,
+        retrieval_result=retrieval_result,
+    )
+
+
+async def run_chat_turn_async(
+    db: Session,
+    thread: ChatThread,
+    question: str,
+    *,
+    agent_runner: AsyncAgentRunner = run_document_agent_async,
+    retrieval_settings: RetrievalSettings | None = None,
+) -> ChatTurnResult:
+    clean_question = question.strip()
+    user_message = service.save_message(db, thread, "user", clean_question)
+    retrieval_result = retrieve_source_passages(
+        db,
+        clean_question,
+        filters=RetrievalFilters(),
+        retrieval_settings=retrieval_settings or RetrievalSettings(),
+    )
+
+    deps = DocumentAgentDeps(db=db, retrieval_result=retrieval_result)
+    answer = await agent_runner(clean_question, deps)
     answer = repair_grounded_answer(answer, retrieval_result)
     validate_grounded_answer(answer, retrieval_result)
 

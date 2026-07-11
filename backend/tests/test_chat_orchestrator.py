@@ -115,3 +115,37 @@ def test_run_chat_turn_fails_closed_when_validation_fails(monkeypatch) -> None:
         orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
 
     assert [message.role for message in saved_messages] == ["user"]
+
+
+@pytest.mark.anyio
+async def test_run_chat_turn_async_uses_async_agent_runner(monkeypatch) -> None:
+    retrieval_result = make_retrieval_result()
+    saved_messages = []
+
+    def fake_retrieve_source_passages(*args, **kwargs):
+        return retrieval_result
+
+    def fake_save_message(db, thread, role, content):
+        message = SimpleNamespace(id=uuid4(), role=role, content=content)
+        saved_messages.append(message)
+        return message
+
+    async def fake_agent_runner(question, deps):
+        return GroundedAnswer(
+            answer="Apple Services and iPhone sales increased.",
+            citations=[
+                GroundedCitation(
+                    chunk_id=retrieval_result.passages[0].chunk_id,
+                    claim="Services and iPhone sales increased.",
+                    supporting_quote="Services and iPhone net sales increased",
+                )
+            ],
+        )
+
+    monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
+
+    turn = await orchestrator.run_chat_turn_async(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
+
+    assert turn.answer.answer == "Apple Services and iPhone sales increased."
+    assert [message.role for message in saved_messages] == ["user", "assistant"]

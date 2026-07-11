@@ -137,3 +137,9 @@ def run_document_agent(question: str, deps: DocumentAgentDeps) -> GroundedAnswer
     document_agent = create_document_agent()
     result = document_agent.run_sync(build_agent_prompt(question, deps.retrieval_result), deps=deps)
     return result.output
+
+
+async def run_document_agent_async(question: str, deps: DocumentAgentDeps) -> GroundedAnswer:
+    document_agent = create_document_agent()
+    result = await document_agent.run(build_agent_prompt(question, deps.retrieval_result), deps=deps)
+    return result.output
