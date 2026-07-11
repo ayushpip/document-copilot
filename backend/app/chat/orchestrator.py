@@ -5,12 +5,13 @@ from dataclasses import dataclass
 
 from sqlalchemy.orm import Session
 
-from app.assistant import DocumentAgentDeps, GroundedAnswer, run_document_agent, run_document_agent_async
-from app.assistant.evidence import EvidenceBrief, validate_numeric_claims
+from app.assistant import DocumentAgentDeps, GroundedAnswer, GroundedCitation, run_document_agent, run_document_agent_async
+from app.assistant.evidence import EvidenceBrief, EvidenceValidationError, validate_numeric_claims
 from app.assistant.evidence_retrieval import build_recovered_answer_plan
 from app.chat import service
 from app.database.models import ChatMessage, ChatThread, MessageCitation
 from app.grounding import repair_grounded_answer, validate_grounded_answer
+from app.grounding.validator import GroundingValidationError
 from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings, retrieve_source_passages
 
 AgentRunner = Callable[[str, DocumentAgentDeps], GroundedAnswer]
@@ -60,6 +61,63 @@ def persist_message_citations(db: Session, assistant_message: ChatMessage, answe
         db.add(MessageCitation(chat_message_id=assistant_message.id, document_chunk_id=citation.chunk_id))
 
 
+def fallback_grounded_answer(evidence_brief: EvidenceBrief) -> GroundedAnswer | None:
+    """Build a conservative answer from verified evidence if the model output fails validation."""
+
+    if not evidence_brief.rows:
+        return None
+
+    row_lines = [
+        f"- {row.company} {row.filing_year} {row.metric}: {row.value:g} {row.unit} "
+        f"(chunk_id: {row.source_chunk_id})"
+        for row in evidence_brief.rows
+    ]
+    calculation_lines = [
+        f"- {calculation.label}: {calculation.value:g}{calculation.unit} "
+        f"using {calculation.formula} (source chunks: "
+        f"{', '.join(str(chunk_id) for chunk_id in calculation.source_chunk_ids)})"
+        for calculation in evidence_brief.calculations
+    ]
+    conflict_lines = [f"- {conflict}" for conflict in evidence_brief.conflicts]
+
+    sections = ["I could not safely use the generated prose, so I am returning the verified evidence table instead."]
+    sections.append("\nEvidence:\n" + "\n".join(row_lines[:40]))
+    if calculation_lines:
+        sections.append("\nCalculated comparisons:\n" + "\n".join(calculation_lines[:40]))
+    if conflict_lines:
+        sections.append("\nEvidence conflicts or filing recasts to review:\n" + "\n".join(conflict_lines[:20]))
+
+    citations = [
+        GroundedCitation(
+            chunk_id=row.source_chunk_id,
+            claim=f"{row.company} {row.metric} was {row.value:g} {row.unit} in {row.filing_year}.",
+            supporting_quote=row.quote,
+        )
+        for row in evidence_brief.rows[:40]
+    ]
+    return GroundedAnswer(answer="\n".join(sections), citations=citations)
+
+
+def validate_or_fallback_answer(
+    answer: GroundedAnswer,
+    retrieval_result: RetrievalResult,
+    evidence_brief: EvidenceBrief,
+) -> GroundedAnswer:
+    try:
+        repaired_answer = repair_grounded_answer(answer, retrieval_result)
+        validate_grounded_answer(repaired_answer, retrieval_result)
+        validate_numeric_claims(repaired_answer.answer, evidence_brief)
+        return repaired_answer
+    except (GroundingValidationError, EvidenceValidationError):
+        fallback_answer = fallback_grounded_answer(evidence_brief)
+        if fallback_answer is None:
+            raise
+        repaired_fallback = repair_grounded_answer(fallback_answer, retrieval_result)
+        validate_grounded_answer(repaired_fallback, retrieval_result)
+        validate_numeric_claims(repaired_fallback.answer, evidence_brief)
+        return repaired_fallback
+
+
 def run_chat_turn(
     db: Session,
     thread: ChatThread,
@@ -85,10 +143,7 @@ def run_chat_turn(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    answer = agent_runner(clean_question, deps)
-    answer = repair_grounded_answer(answer, retrieval_result)
-    validate_grounded_answer(answer, retrieval_result)
-    validate_numeric_claims(answer.answer, evidence_brief)
+    answer = validate_or_fallback_answer(agent_runner(clean_question, deps), retrieval_result, evidence_brief)
 
     assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
     persist_message_citations(db, assistant_message, answer)
@@ -127,10 +182,7 @@ async def run_chat_turn_async(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    answer = await agent_runner(clean_question, deps)
-    answer = repair_grounded_answer(answer, retrieval_result)
-    validate_grounded_answer(answer, retrieval_result)
-    validate_numeric_claims(answer.answer, evidence_brief)
+    answer = validate_or_fallback_answer(await agent_runner(clean_question, deps), retrieval_result, evidence_brief)
 
     assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
     persist_message_citations(db, assistant_message, answer)

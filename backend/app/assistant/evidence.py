@@ -340,6 +340,17 @@ def calculate_growth_percentage(current: EvidenceRow, previous: EvidenceRow) -> 
     )
 
 
+def calculate_absolute_change(current: EvidenceRow, previous: EvidenceRow) -> CalculationRow:
+    change = current.value - previous.value
+    return CalculationRow(
+        label=f"{current.company} {current.metric} change {previous.filing_year}-{current.filing_year}",
+        value=round(change, 1),
+        unit=current.unit,
+        formula=f"{current.value} - {previous.value}",
+        source_chunk_ids=[previous.source_chunk_id, current.source_chunk_id],
+    )
+
+
 def calculate_margin_percentage(numerator: EvidenceRow, denominator: EvidenceRow) -> CalculationRow | None:
     if denominator.value == 0:
         return None
@@ -374,10 +385,13 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
     for metric_rows in rows_by_company_metric.values():
         sorted_rows = sorted(metric_rows, key=lambda row: row.filing_year)
         for previous, current in zip(sorted_rows, sorted_rows[1:], strict=False):
-            calculation = calculate_growth_percentage(current, previous)
-            if calculation and (calculation.label, calculation.formula) not in seen_calculations:
-                seen_calculations.add((calculation.label, calculation.formula))
-                calculations.append(calculation)
+            for calculation in [
+                calculate_growth_percentage(current, previous),
+                calculate_absolute_change(current, previous),
+            ]:
+                if calculation and (calculation.label, calculation.formula) not in seen_calculations:
+                    seen_calculations.add((calculation.label, calculation.formula))
+                    calculations.append(calculation)
 
     for company_year_rows in rows_by_company_year.values():
         income_rows = [row for row in company_year_rows if _canonical_metric(row.metric).endswith("operating income")]
@@ -535,7 +549,7 @@ def format_answer_plan(plan: AnswerPlan) -> str:
     return "\n".join([format_evidence_brief(plan.evidence_brief), "", *outline_lines])
 
 
-def _claim_numbers(text: str) -> list[float]:
+def _claim_numbers(text: str) -> list[tuple[float, bool]]:
     matches = re.finditer(r"(?<![\w-])\$?\(?-?[0-9][0-9,]*(?:\.[0-9]+)?\)?\s*%?", text)
     numbers = []
     for match in matches:
@@ -545,8 +559,26 @@ def _claim_numbers(text: str) -> list[float]:
         parsed = _parse_number(raw_value)
         if parsed is None:
             continue
-        numbers.append(parsed)
+        numbers.append((parsed, "%" in raw_value))
     return numbers
+
+
+def _allowed_numeric_values(brief: EvidenceBrief) -> tuple[set[float], set[float]]:
+    money_values = {row.value for row in brief.rows}
+    percent_values = {calculation.value for calculation in brief.calculations if calculation.unit == "%"}
+    money_values.update(calculation.value for calculation in brief.calculations if calculation.unit != "%")
+
+    scaled_money_values = set(money_values)
+    for value in money_values:
+        scaled_money_values.add(round(value))
+        scaled_money_values.add(round(value / 1000, 1))
+        scaled_money_values.add(round(value * 1000, 1))
+
+    scaled_percent_values = set(percent_values)
+    for value in percent_values:
+        scaled_percent_values.add(round(value))
+
+    return scaled_money_values, scaled_percent_values
 
 
 def validate_numeric_claims(answer_text: str, brief: EvidenceBrief, *, tolerance: float = 0.6) -> None:
@@ -555,14 +587,12 @@ def validate_numeric_claims(answer_text: str, brief: EvidenceBrief, *, tolerance
     if not brief.rows:
         return
 
-    allowed_values = {row.value for row in brief.rows}
-    allowed_values.update(calculation.value for calculation in brief.calculations)
-    allowed_values.update(round(value) for value in list(allowed_values))
+    money_values, percent_values = _allowed_numeric_values(brief)
 
     unsupported_numbers = [
         number
-        for number in _claim_numbers(answer_text)
-        if not any(abs(number - allowed) <= tolerance for allowed in allowed_values)
+        for number, is_percent in _claim_numbers(answer_text)
+        if not any(abs(number - allowed) <= tolerance for allowed in (percent_values if is_percent else money_values))
     ]
     if unsupported_numbers:
         formatted = ", ".join(f"{number:g}" for number in unsupported_numbers)

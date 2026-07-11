@@ -125,6 +125,7 @@ async def stream_chat(
         turn = await run_chat_turn_async(db, thread, user_message.content)
     except (GroundingValidationError, EvidenceValidationError) as exc:
         db.rollback()
+        logger.warning("Chat stream validation failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Assistant response failed grounding or evidence validation.",

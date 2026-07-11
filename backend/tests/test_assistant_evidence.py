@@ -205,6 +205,24 @@ def test_validate_numeric_claims_accepts_evidence_and_calculated_values() -> Non
     )
 
 
+def test_validate_numeric_claims_accepts_scaled_absolute_changes() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 |
+| --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 87,464 |
+| Operating Income | 44,589 | 37,813 |
+"""
+    )
+    brief = build_evidence_brief("Compare Microsoft cloud revenue growth and operating margins from 2024-2025.", result)
+
+    validate_numeric_claims(
+        "Revenue increased by about $18.8 billion and operating income increased by about $6.8 billion.",
+        brief,
+    )
+
+
 def test_validate_numeric_claims_rejects_unsupported_values() -> None:
     result = make_result(
         """

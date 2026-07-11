@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 
 from app.assistant import GroundedAnswer, GroundedCitation
-from app.assistant.evidence import build_answer_plan
+from app.assistant.evidence import build_answer_plan, build_evidence_brief
 from app.chat import orchestrator
 from app.database.models import MessageCitation
 from app.grounding import GroundingValidationError
@@ -33,6 +33,36 @@ def make_retrieval_result(chunk_id=None) -> RetrievalResult:
                 filing_url=None,
                 chunk_index=18,
                 content="Services and iPhone net sales increased during 2025.",
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(),
+    )
+
+
+def make_numeric_retrieval_result(chunk_id=None) -> RetrievalResult:
+    chunk_id = chunk_id or uuid4()
+    return RetrievalResult(
+        query="Microsoft cloud revenue",
+        passages=[
+            RetrievedPassage(
+                chunk_id=chunk_id,
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=84,
+                content=(
+                    "|  | 2025 | 2024 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Intelligent Cloud |  |  |\n"
+                    "| Revenue | 106,265 | 87,464 |\n"
+                    "| Operating Income | 44,589 | 37,813 |"
+                ),
                 metadata={},
                 rank=1,
                 fused_score=0.1,
@@ -120,6 +150,47 @@ def test_run_chat_turn_fails_closed_when_validation_fails(monkeypatch) -> None:
         orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
 
     assert [message.role for message in saved_messages] == ["user"]
+
+
+def test_run_chat_turn_falls_back_to_verified_evidence_when_model_numbers_fail(monkeypatch) -> None:
+    retrieval_result = make_numeric_retrieval_result()
+    evidence_brief = build_evidence_brief("Microsoft cloud revenue", retrieval_result)
+    saved_messages = []
+
+    def fake_retrieve_source_passages(*args, **kwargs):
+        return retrieval_result
+
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return retrieval_result, build_answer_plan("Microsoft cloud revenue", retrieval_result)
+
+    def fake_save_message(db, thread, role, content):
+        message = SimpleNamespace(id=uuid4(), role=role, content=content)
+        saved_messages.append(message)
+        return message
+
+    def fake_agent_runner(question, deps):
+        return GroundedAnswer(
+            answer="Microsoft Intelligent Cloud revenue was $123,456 million.",
+            citations=[
+                GroundedCitation(
+                    chunk_id=retrieval_result.passages[0].chunk_id,
+                    claim="Unsupported number.",
+                    supporting_quote="| Revenue | 106,265 | 87,464 |",
+                )
+            ],
+        )
+
+    monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
+    monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
+
+    turn = orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
+
+    assert "verified evidence table" in turn.answer.answer
+    assert "106,265" not in turn.answer.answer
+    assert "106265" in turn.answer.answer
+    assert turn.evidence_brief == evidence_brief
+    assert [message.role for message in saved_messages] == ["user", "assistant"]
 
 
 @pytest.mark.anyio
