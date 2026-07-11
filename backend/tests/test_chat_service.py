@@ -5,6 +5,8 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.api.chat import delete_chat_thread
+from app.auth import CurrentUser
 from app.chat import service
 from app.chat.schemas import AiSdkMessage
 from app.database.models import ChatMessage, ChatThread, User
@@ -47,6 +49,30 @@ def test_get_owned_thread_rejects_other_users_thread(db: Session) -> None:
         service.get_owned_thread(db, other_user, thread.id)
 
     assert exc_info.value.status_code == 403
+
+
+def test_delete_thread_removes_owned_thread(db: Session) -> None:
+    user = service.get_or_create_app_user(db, "owner")
+    thread = service.create_thread(db, user, "Delete me")
+    db.commit()
+
+    service.delete_thread(db, thread)
+    db.commit()
+
+    assert service.list_threads(db, user) == []
+
+
+@pytest.mark.anyio
+async def test_delete_chat_thread_endpoint_removes_owned_thread(db: Session) -> None:
+    user = service.get_or_create_app_user(db, "owner")
+    thread = service.create_thread(db, user, "Delete me")
+    db.commit()
+    current_user = CurrentUser(user_id="owner", email=None, access_token="token", supabase=object())
+
+    response = await delete_chat_thread(thread.id, current_user=current_user, db=db)
+
+    assert response.status_code == 204
+    assert service.list_threads(db, user) == []
 
 
 def test_latest_user_message_uses_last_user_message() -> None:

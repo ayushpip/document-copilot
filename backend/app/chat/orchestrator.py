@@ -6,7 +6,8 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.assistant import DocumentAgentDeps, GroundedAnswer, run_document_agent, run_document_agent_async
-from app.assistant.evidence import EvidenceBrief, build_answer_plan, validate_numeric_claims
+from app.assistant.evidence import EvidenceBrief, validate_numeric_claims
+from app.assistant.evidence_retrieval import build_recovered_answer_plan
 from app.chat import service
 from app.database.models import ChatMessage, ChatThread, MessageCitation
 from app.grounding import repair_grounded_answer, validate_grounded_answer
@@ -76,7 +77,7 @@ def run_chat_turn(
         retrieval_settings=retrieval_settings or RetrievalSettings(),
     )
 
-    answer_plan = build_answer_plan(clean_question, retrieval_result)
+    retrieval_result, answer_plan = build_recovered_answer_plan(db, clean_question, retrieval_result)
     evidence_brief = answer_plan.evidence_brief
     deps = DocumentAgentDeps(
         db=db,
@@ -118,7 +119,7 @@ async def run_chat_turn_async(
         retrieval_settings=retrieval_settings or RetrievalSettings(),
     )
 
-    answer_plan = build_answer_plan(clean_question, retrieval_result)
+    retrieval_result, answer_plan = build_recovered_answer_plan(db, clean_question, retrieval_result)
     evidence_brief = answer_plan.evidence_brief
     deps = DocumentAgentDeps(
         db=db,

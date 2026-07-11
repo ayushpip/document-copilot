@@ -51,6 +51,10 @@ export async function loadMessages(threadId: string) {
   return api.get<ChatMessage[]>(`/chat/threads/${threadId}/messages`)
 }
 
+export async function deleteThread(threadId: string) {
+  return api.delete<void>(`/chat/threads/${threadId}`)
+}
+
 async function getAccessToken() {
   const { data, error } = await supabase.auth.getSession()
 

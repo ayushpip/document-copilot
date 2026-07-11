@@ -150,6 +150,27 @@ Goal: answers are built from a verified evidence table before final prose, so nu
 - [ ] Verify: Apple revenue mix answer uses complete 2021-2025 product table
 - [ ] Verify: Microsoft cloud answer distinguishes revenue growth, operating income growth, and operating margin percentage
 
+## Phase 10A — Reliability and chat UX repair
+
+Goal: the assistant recovers missing evidence before refusing, and the chat interface feels stable enough for analyst testing.
+
+**Backend reliability**
+
+- [X] Evidence-aware retrieval retry — when structured evidence has coverage gaps, run targeted full-text recovery searches before answering
+- [X] Targeted query builder — derive company, years, segments/products, and financial metrics from the question
+- [X] Merge recovered passages into the existing retrieval result without duplicate chunks
+- [X] Unit tests: Microsoft Intelligent Cloud 2022-2025 recovery finds revenue and operating income evidence
+- [ ] Verify: Microsoft cloud answer no longer gives false "not enough evidence" when filings contain the segment table
+
+**Frontend chat UX**
+
+- [X] Backend `DELETE /chat/threads/{thread_id}` for owned threads
+- [X] Frontend delete chat action in the thread sidebar
+- [X] Previous chat navigation remains responsive while not streaming
+- [X] User prompt appears exactly once after send, without duplicate/ghost messages
+- [X] Error state preserves the typed prompt when send fails
+- [X] Unit/build checks for chat API and UI changes
+
 ## 11. Validation and client readiness
 - [ ] Test all sample questions from the client brief manually
 - [ ] Verify answers return cited source passages for every claim

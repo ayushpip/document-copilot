@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -9,10 +9,10 @@ import { ThreadSidebar } from '@/components/chat/ThreadSidebar'
 import { Button } from '@/components/ui/button'
 import {
   createThread,
+  deleteThread,
   listThreads,
   loadMessages,
   streamChat,
-  type AiSdkMessage,
   type ChatCitation,
   type ChatThread,
 } from '@/lib/chat-api'
@@ -92,6 +92,30 @@ export function ChatPage() {
     navigate(`/chat/${thread.id}`)
   }
 
+  async function handleDeleteThread(deletedThreadId: string) {
+    if (isBusy) {
+      return
+    }
+
+    const remainingThreads = threads.filter((thread) => thread.id !== deletedThreadId)
+    setThreads(remainingThreads)
+
+    if (deletedThreadId === threadId) {
+      setMessages([])
+      setSelectedCitation(null)
+      setStatus({ state: 'idle' })
+      navigate(remainingThreads[0] ? `/chat/${remainingThreads[0].id}` : '/chat', { replace: true })
+    }
+
+    try {
+      await deleteThread(deletedThreadId)
+      await refreshThreads()
+    } catch (error) {
+      setStatus({ state: 'error', message: errorMessage(error) })
+      await refreshThreads()
+    }
+  }
+
   useEffect(() => {
     let isMounted = true
 
@@ -162,14 +186,6 @@ export function ChatPage() {
     }
   }, [threadId])
 
-  const aiMessages = useMemo<AiSdkMessage[]>(
-    () =>
-      messages
-        .filter((message) => message.role === 'user' || message.role === 'assistant')
-        .map((message) => ({ role: message.role, content: message.content })),
-    [messages],
-  )
-
   async function handleSend(content: string): Promise<boolean> {
     setStatus({ state: 'streaming' })
     setRunStage(RUN_STAGES[0])
@@ -207,10 +223,14 @@ export function ChatPage() {
       const userMessage: DisplayMessage = { id: crypto.randomUUID(), role: 'user', content }
       const assistantMessage: DisplayMessage = { id: crypto.randomUUID(), role: 'assistant', content: '', citations: [] }
       const nextMessages = [...messages, userMessage, assistantMessage]
+      const streamMessages = nextMessages
+        .filter((message) => message.role === 'user' || message.role === 'assistant')
+        .filter((message) => message.content.trim() !== '')
+        .map((message) => ({ role: message.role, content: message.content }))
       setMessages(nextMessages)
       setSelectedCitation(null)
 
-      await streamChat(activeThread.id, [...aiMessages, { role: 'user', content }], (chunk) => {
+      await streamChat(activeThread.id, streamMessages, (chunk) => {
         if (!hasReceivedText) {
           hasReceivedText = true
           window.clearInterval(stageTimer)
@@ -255,8 +275,10 @@ export function ChatPage() {
         threads={threads}
         activeThreadId={threadId}
         isLoading={isLoadingThreads}
+        isBusy={isBusy}
         onNewThread={() => void handleNewThread()}
         onRefresh={() => void refreshThreads()}
+        onDeleteThread={(deletedThreadId) => void handleDeleteThread(deletedThreadId)}
       />
 
       <section className="flex min-w-0 flex-col">

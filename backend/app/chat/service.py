@@ -68,6 +68,11 @@ def load_message_history(db: Session, thread: ChatThread) -> list[ChatMessage]:
     )
 
 
+def delete_thread(db: Session, thread: ChatThread) -> None:
+    db.delete(thread)
+    db.flush()
+
+
 def latest_user_message(messages: Iterable[AiSdkMessage]) -> AiSdkMessage:
     for message in reversed(list(messages)):
         if message.role == "user" and message.content.strip():
@@ -107,6 +112,7 @@ def persist_assistant_message(thread_id: UUID, content: str) -> None:
 __all__ = [
     "STUB_ASSISTANT_REPLY",
     "create_thread",
+    "delete_thread",
     "get_or_create_app_user",
     "get_owned_thread",
     "latest_user_message",

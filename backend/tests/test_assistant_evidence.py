@@ -60,6 +60,26 @@ Segment revenue, cost of revenue, operating expenses, and operating income were 
     )
 
 
+def test_extract_evidence_handles_flattened_docling_table_assignments() -> None:
+    result = make_result(
+        """
+(In millions, except percentages), 1 = 2024. (In millions, except percentages), 2 = 2023.
+Revenue, 1 = . Revenue, 2 = .
+Intelligent Cloud, 1 = 105,362. Intelligent Cloud, 2 = 87,907.
+Operating Income, 1 = . Operating Income, 2 = .
+Intelligent Cloud, 1 = 49,584. Intelligent Cloud, 2 = 37,884.
+"""
+    )
+
+    rows = extract_evidence(result)
+
+    assert next(row for row in rows if row.metric == "Intelligent Cloud Revenue" and row.filing_year == 2024).value == 105_362
+    assert (
+        next(row for row in rows if row.metric == "Intelligent Cloud Operating Income" and row.filing_year == 2024).value
+        == 49_584
+    )
+
+
 def test_build_evidence_brief_calculates_growth_and_margin() -> None:
     result = make_result(
         """
@@ -110,6 +130,26 @@ def test_build_answer_plan_flags_requested_company_and_product_gaps() -> None:
     assert ("company", "AAPL") in gaps
     assert ("segment_or_product", "iphone") in gaps
     assert any(item.startswith("State coverage gaps clearly") for item in plan.interpretation_outline)
+
+
+def test_build_answer_plan_flags_conflicting_values() -> None:
+    result = make_result(
+        """
+|  | 2024 |
+| --- | --- |
+| Intelligent Cloud |  |
+| Revenue | 105,362 |
+
+(In millions), 1 = 2024.
+Intelligent Cloud, 1 = .
+Revenue, 1 = 87,464.
+"""
+    )
+
+    plan = build_answer_plan("Compare Microsoft Intelligent Cloud revenue in 2024.", result)
+
+    assert plan.evidence_brief.conflicts
+    assert any("conflicting extracted values" in item for item in plan.interpretation_outline)
 
 
 def test_format_evidence_brief_includes_source_chunks_and_calculations() -> None:

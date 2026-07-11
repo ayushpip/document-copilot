@@ -4,6 +4,7 @@ from uuid import uuid4
 import pytest
 
 from app.assistant import GroundedAnswer, GroundedCitation
+from app.assistant.evidence import build_answer_plan
 from app.chat import orchestrator
 from app.database.models import MessageCitation
 from app.grounding import GroundingValidationError
@@ -91,6 +92,9 @@ def test_run_chat_turn_fails_closed_when_validation_fails(monkeypatch) -> None:
     def fake_retrieve_source_passages(*args, **kwargs):
         return retrieval_result
 
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return retrieval_result, build_answer_plan("Question?", retrieval_result)
+
     def fake_save_message(db, thread, role, content):
         message = SimpleNamespace(id=uuid4(), role=role, content=content)
         saved_messages.append(message)
@@ -109,6 +113,7 @@ def test_run_chat_turn_fails_closed_when_validation_fails(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
     monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
 
     with pytest.raises(GroundingValidationError):
@@ -124,6 +129,9 @@ async def test_run_chat_turn_async_uses_async_agent_runner(monkeypatch) -> None:
 
     def fake_retrieve_source_passages(*args, **kwargs):
         return retrieval_result
+
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return retrieval_result, build_answer_plan("Question?", retrieval_result)
 
     def fake_save_message(db, thread, role, content):
         message = SimpleNamespace(id=uuid4(), role=role, content=content)
@@ -143,6 +151,7 @@ async def test_run_chat_turn_async_uses_async_agent_runner(monkeypatch) -> None:
         )
 
     monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
     monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
 
     turn = await orchestrator.run_chat_turn_async(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)

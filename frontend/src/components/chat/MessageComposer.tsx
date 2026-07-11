@@ -19,9 +19,10 @@ export function MessageComposer({ disabled, onSubmit }: MessageComposerProps) {
       return
     }
 
+    setContent('')
     const wasAccepted = await onSubmit(trimmed)
-    if (wasAccepted) {
-      setContent('')
+    if (!wasAccepted) {
+      setContent(trimmed)
     }
   }
 

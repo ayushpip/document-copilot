@@ -5,7 +5,7 @@ import logging
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -101,6 +101,18 @@ async def read_chat_messages(
     return [chat_message_response(db, message) for message in messages]
 
 
+async def delete_chat_thread(
+    thread_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Session = Depends(get_session),
+) -> Response:
+    user = get_app_user(current_user, db)
+    thread = service.get_owned_thread(db, user, thread_id)
+    service.delete_thread(db, thread)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 async def stream_chat(
     payload: ChatStreamRequest,
     current_user: CurrentUser = Depends(get_current_user),
@@ -143,6 +155,7 @@ def register_chat_routes(app: FastAPI) -> None:
         response_model=list[ChatMessageResponse],
         tags=["chat"],
     )
+    app.add_api_route("/chat/threads/{thread_id}", delete_chat_thread, methods=["DELETE"], status_code=204, tags=["chat"])
     app.add_api_route("/chat/stream", stream_chat, methods=["POST"], tags=["chat"])
 
 

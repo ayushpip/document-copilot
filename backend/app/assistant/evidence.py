@@ -12,6 +12,7 @@ from app.retrieval import RetrievedPassage, RetrievalResult
 
 YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
 NUMBER_PATTERN = re.compile(r"\(?-?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*\)?")
+ASSIGNMENT_PATTERN = re.compile(r"([^.,]+?),\s*(\d+)\s*=\s*([^.]*)\.")
 TABLE_SEPARATOR_PATTERN = re.compile(r"^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$")
 KNOWN_FINANCIAL_METRICS = {
     "revenue",
@@ -85,6 +86,7 @@ class EvidenceBrief(BaseModel):
     rows: list[EvidenceRow] = Field(default_factory=list)
     calculations: list[CalculationRow] = Field(default_factory=list)
     coverage_gaps: list[CoverageGap] = Field(default_factory=list)
+    conflicts: list[str] = Field(default_factory=list)
 
     @property
     def has_evidence(self) -> bool:
@@ -125,6 +127,8 @@ def _parse_number(value: str) -> float | None:
 def _normalize_metric(metric: str, parent_metric: str | None = None) -> str:
     clean_metric = " ".join(metric.replace("**", "").split())
     if parent_metric:
+        if parent_metric.lower() in KNOWN_FINANCIAL_METRICS:
+            return f"{clean_metric} {parent_metric}".strip()
         return f"{parent_metric} {clean_metric}".strip()
     return clean_metric
 
@@ -220,6 +224,65 @@ def _table_rows_from_passage(passage: RetrievedPassage) -> list[EvidenceRow]:
     return rows
 
 
+def _flattened_rows_from_passage(passage: RetrievedPassage, text: str) -> list[EvidenceRow]:
+    rows = []
+    year_by_index: dict[str, int] = {}
+    section_label: str | None = None
+    current_metric: str | None = None
+    value_counts: dict[str, int] = defaultdict(int)
+
+    for match in ASSIGNMENT_PATTERN.finditer(text):
+        label = " ".join(match.group(1).split())
+        raw_value = match.group(3).strip()
+        clean_value = raw_value.strip("$ ").strip()
+        label_lower = label.lower()
+        ordered_years = [year for _, year in sorted(year_by_index.items(), key=lambda item: int(item[0]))]
+
+        year_match = YEAR_PATTERN.fullmatch(clean_value)
+        if year_match:
+            year_by_index[match.group(2)] = int(year_match.group(1))
+            continue
+
+        value = _parse_number(raw_value)
+        if value is None:
+            if label_lower in KNOWN_FINANCIAL_METRICS:
+                current_metric = label
+            elif clean_value in {"", "."}:
+                section_label = label
+            continue
+
+        if "%" in raw_value or not ordered_years:
+            continue
+
+        if label_lower in KNOWN_FINANCIAL_METRICS:
+            metric = _normalize_metric(label, section_label)
+        elif current_metric:
+            metric = _normalize_metric(label, current_metric)
+        else:
+            continue
+
+        value_index = value_counts[metric]
+        if value_index >= len(ordered_years):
+            continue
+        value_counts[metric] += 1
+
+        rows.append(
+            EvidenceRow(
+                company=passage.company,
+                filing_year=ordered_years[value_index],
+                filing_type=passage.filing_type,
+                metric=metric,
+                value=value,
+                unit="USD millions",
+                source_chunk_id=passage.chunk_id,
+                source_chunk_index=passage.chunk_index,
+                quote=match.group(0).strip(),
+            )
+        )
+
+    return rows
+
+
 def extract_evidence(retrieval_result: RetrievalResult) -> list[EvidenceRow]:
     """Extract structured numeric evidence from retrieved markdown tables."""
 
@@ -227,14 +290,40 @@ def extract_evidence(retrieval_result: RetrievalResult) -> list[EvidenceRow]:
     seen = set()
 
     for passage in retrieval_result.passages:
-        for row in _table_rows_from_passage(passage):
-            key = (row.company, row.filing_year, row.metric.lower(), row.value, row.source_chunk_id)
+        passage_rows = _table_rows_from_passage(passage)
+        for text in [passage.content, *passage.neighbor_chunks]:
+            passage_rows.extend(_flattened_rows_from_passage(passage, text))
+
+        for row in passage_rows:
+            key = (row.company, row.filing_year, row.metric.lower(), row.value)
             if key in seen:
                 continue
             seen.add(key)
             rows.append(row)
 
     return rows
+
+
+def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[EvidenceRow]:
+    filtered_rows = rows
+    companies = requested_companies(question)
+    years = requested_years(question)
+    terms = requested_terms(question)
+
+    if companies:
+        filtered_rows = [row for row in filtered_rows if row.company in companies]
+    if years:
+        filtered_rows = [row for row in filtered_rows if row.filing_year in years]
+    if terms:
+        relevant_rows = [
+            row
+            for row in filtered_rows
+            if any(term in row.metric.lower() for term in terms) or row.metric.lower() in {"total net sales", "total revenue"}
+        ]
+        if relevant_rows:
+            filtered_rows = relevant_rows
+
+    return filtered_rows
 
 
 def calculate_growth_percentage(current: EvidenceRow, previous: EvidenceRow) -> CalculationRow | None:
@@ -274,6 +363,7 @@ def _canonical_metric(metric: str) -> str:
 
 def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
     calculations = []
+    seen_calculations = set()
     rows_by_company_metric: dict[tuple[str, str], list[EvidenceRow]] = defaultdict(list)
     rows_by_company_year: dict[tuple[str, int], list[EvidenceRow]] = defaultdict(list)
 
@@ -285,7 +375,8 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
         sorted_rows = sorted(metric_rows, key=lambda row: row.filing_year)
         for previous, current in zip(sorted_rows, sorted_rows[1:], strict=False):
             calculation = calculate_growth_percentage(current, previous)
-            if calculation:
+            if calculation and (calculation.label, calculation.formula) not in seen_calculations:
+                seen_calculations.add((calculation.label, calculation.formula))
                 calculations.append(calculation)
 
     for company_year_rows in rows_by_company_year.values():
@@ -303,7 +394,8 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
             )
             if revenue:
                 calculation = calculate_margin_percentage(operating_income, revenue)
-                if calculation:
+                if calculation and (calculation.label, calculation.formula) not in seen_calculations:
+                    seen_calculations.add((calculation.label, calculation.formula))
                     calculations.append(calculation)
 
     return calculations
@@ -319,14 +411,18 @@ def _requested_years(question: str) -> set[int]:
     return years
 
 
-def _requested_companies(question: str) -> set[str]:
+def requested_companies(question: str) -> set[str]:
     lower_question = question.lower()
     return {ticker for name, ticker in KNOWN_COMPANIES.items() if re.search(rf"\b{re.escape(name)}\b", lower_question)}
 
 
-def _requested_terms(question: str) -> set[str]:
+def requested_terms(question: str) -> set[str]:
     lower_question = question.lower()
     return {term for term in KNOWN_SEGMENTS_AND_PRODUCTS if re.search(rf"\b{re.escape(term)}\b", lower_question)}
+
+
+def requested_years(question: str) -> set[int]:
+    return _requested_years(question)
 
 
 def _coverage_gaps(question: str, rows: list[EvidenceRow]) -> list[CoverageGap]:
@@ -340,27 +436,37 @@ def _coverage_gaps(question: str, rows: list[EvidenceRow]) -> list[CoverageGap]:
     )
 
     available_companies = {row.company for row in rows}
-    gaps.extend(
-        CoverageGap(dimension="company", value=company)
-        for company in sorted(_requested_companies(question))
-        if company not in available_companies
-    )
+    gaps.extend(CoverageGap(dimension="company", value=company) for company in sorted(requested_companies(question)) if company not in available_companies)
 
     available_metrics = " ".join(row.metric.lower() for row in rows)
     gaps.extend(
         CoverageGap(dimension="segment_or_product", value=term)
-        for term in sorted(_requested_terms(question))
+        for term in sorted(requested_terms(question))
         if term not in available_metrics
     )
     return gaps
 
 
+def _evidence_conflicts(rows: list[EvidenceRow]) -> list[str]:
+    values_by_key: dict[tuple[str, int, str], set[float]] = defaultdict(set)
+    for row in rows:
+        values_by_key[(row.company, row.filing_year, _canonical_metric(row.metric))].add(row.value)
+
+    return [
+        f"{company} {metric} {year} has multiple extracted values: "
+        f"{', '.join(f'{value:g}' for value in sorted(values))}"
+        for (company, year, metric), values in sorted(values_by_key.items())
+        if len(values) > 1
+    ]
+
+
 def build_evidence_brief(question: str, retrieval_result: RetrievalResult) -> EvidenceBrief:
-    rows = extract_evidence(retrieval_result)
+    rows = _filter_relevant_rows(question, extract_evidence(retrieval_result))
     return EvidenceBrief(
         rows=rows,
         calculations=_build_calculations(rows),
         coverage_gaps=_coverage_gaps(question, rows),
+        conflicts=_evidence_conflicts(rows),
     )
 
 
@@ -373,6 +479,8 @@ def build_answer_plan(question: str, retrieval_result: RetrievalResult) -> Answe
         outline.append("Use deterministic calculations for growth rates and margins before writing trend language.")
     if brief.coverage_gaps:
         outline.append("State coverage gaps clearly instead of filling missing years, companies, segments, or products.")
+    if brief.conflicts:
+        outline.append("Explain conflicting extracted values or filing recasts before comparing trends.")
     if not outline:
         outline.append("No structured numeric evidence was extracted; answer only from cited retrieved passages.")
     return AnswerPlan(evidence_brief=brief, interpretation_outline=outline)
@@ -413,7 +521,12 @@ def format_evidence_brief(brief: EvidenceBrief, *, max_rows: int = 80, max_calcu
         coverage_lines = ["", "Coverage gaps:"]
         coverage_lines.extend(f"- Missing {gap.dimension}: {gap.value}" for gap in brief.coverage_gaps)
 
-    return "\n".join([*row_lines, *calculation_lines, *coverage_lines])
+    conflict_lines = []
+    if brief.conflicts:
+        conflict_lines = ["", "Evidence conflicts or recasts:"]
+        conflict_lines.extend(f"- {conflict}" for conflict in brief.conflicts)
+
+    return "\n".join([*row_lines, *calculation_lines, *coverage_lines, *conflict_lines])
 
 
 def format_answer_plan(plan: AnswerPlan) -> str:
