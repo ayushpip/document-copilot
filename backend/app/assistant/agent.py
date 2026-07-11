@@ -100,6 +100,34 @@ def read_surrounding_chunks(ctx: RunContext[DocumentAgentDeps], chunk_id: UUID) 
     return passage.neighbor_chunks if passage else []
 
 
+def calculate_growth_percentage(current_value: float, previous_value: float) -> dict:
+    """Calculate percentage growth from a previous value to a current value."""
+
+    if previous_value == 0:
+        return {"error": "Cannot calculate growth from a zero previous value."}
+
+    growth = ((current_value - previous_value) / previous_value) * 100
+    return {
+        "current_value": current_value,
+        "previous_value": previous_value,
+        "growth_percentage": round(growth, 1),
+    }
+
+
+def calculate_margin_percentage(numerator: float, denominator: float) -> dict:
+    """Calculate a margin percentage as numerator divided by denominator."""
+
+    if denominator == 0:
+        return {"error": "Cannot calculate margin with a zero denominator."}
+
+    margin = (numerator / denominator) * 100
+    return {
+        "numerator": numerator,
+        "denominator": denominator,
+        "margin_percentage": round(margin, 1),
+    }
+
+
 def _openai_model_name() -> str:
     return settings.openai_chat_model.removeprefix("openai:")
 
@@ -111,22 +139,48 @@ def create_document_agent() -> Agent[DocumentAgentDeps, GroundedAnswer]:
         output_type=GroundedAnswer,
         deps_type=DocumentAgentDeps,
         system_prompt=_load_instructions(),
-        tools=[search_filings, read_chunk, read_surrounding_chunks],
+        tools=[
+            search_filings,
+            read_chunk,
+            read_surrounding_chunks,
+            calculate_growth_percentage,
+            calculate_margin_percentage,
+        ],
     )
 
 
 def build_agent_prompt(question: str, retrieval_result: RetrievalResult) -> str:
+    evidence_coverage = sorted(
+        {(passage.company, passage.filing_year, passage.filing_type) for passage in retrieval_result.passages},
+        key=lambda item: (item[0], item[1], item[2]),
+    )
+    coverage_lines = "\n".join(
+        f"- {company} {filing_type} {filing_year}" for company, filing_year, filing_type in evidence_coverage
+    )
     passages = "\n\n".join(
         (
             f"Passage {passage.rank}\n"
             f"chunk_id: {passage.chunk_id}\n"
             f"source: {passage.company} {passage.filing_type} {passage.filing_year}, chunk {passage.chunk_index}\n"
-            f"content:\n{passage.content}"
+            f"content:\n{passage.content}\n"
+            f"surrounding_context:\n{chr(10).join(passage.neighbor_chunks) or 'No surrounding context.'}"
         )
         for passage in retrieval_result.passages
     )
     return (
         f"Question:\n{question.strip()}\n\n"
+        "Evidence coverage available in this run:\n"
+        f"{coverage_lines or 'No evidence coverage.'}\n\n"
+        "Analysis requirements:\n"
+        "- For comparisons across years, companies, products, or segments, build the answer from the cited evidence "
+        "for each relevant period/category that appears in the evidence coverage.\n"
+        "- If the question asks about margins and the evidence includes revenue and operating income, calculate "
+        "operating margin as operating income divided by revenue; do not use operating income growth as a substitute "
+        "for margin percentage. Use the calculator tool for margin and growth calculations.\n"
+        "- Check every trend word against the numbers. Do not say a metric steadily improved, consistently grew, "
+        "or peaked unless the cited values support that exact wording.\n"
+        "- If the retrieved evidence is incomplete for a requested period/category, say what is missing instead of "
+        "guessing.\n\n"
         "Retrieved evidence passages:\n"
         f"{passages or 'No passages retrieved.'}\n\n"
         "Answer using only this evidence. Return the structured GroundedAnswer output."

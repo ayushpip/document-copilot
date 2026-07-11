@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { LogOut } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 
@@ -70,6 +70,8 @@ export function ChatPage() {
   const [status, setStatus] = useState<ChatStatus>({ state: 'idle' })
   const [runStage, setRunStage] = useState<string | null>(null)
   const [selectedCitation, setSelectedCitation] = useState<ChatCitation | null>(null)
+  const activeSendThreadIdRef = useRef<string | null>(null)
+  const isBusy = status.state === 'loading' || status.state === 'streaming'
 
   async function refreshThreads() {
     setIsLoadingThreads(true)
@@ -81,6 +83,10 @@ export function ChatPage() {
   }
 
   async function handleNewThread() {
+    if (isBusy) {
+      return
+    }
+
     const thread = await createThread()
     setThreads((current) => [thread, ...current])
     navigate(`/chat/${thread.id}`)
@@ -113,6 +119,10 @@ export function ChatPage() {
         setStatus({ state: 'idle' })
         setSelectedCitation(null)
       })
+      return
+    }
+
+    if (activeSendThreadIdRef.current === threadId) {
       return
     }
 
@@ -160,7 +170,7 @@ export function ChatPage() {
     [messages],
   )
 
-  async function handleSend(content: string) {
+  async function handleSend(content: string): Promise<boolean> {
     setStatus({ state: 'streaming' })
     setRunStage(RUN_STAGES[0])
     let stageIndex = 0
@@ -175,9 +185,22 @@ export function ChatPage() {
 
     try {
       const activeThread = threadId ? { id: threadId } : await createThread()
+      activeSendThreadIdRef.current = activeThread.id
 
       if (!threadId) {
-        await refreshThreads()
+        setThreads((current) =>
+          current.some((thread) => thread.id === activeThread.id)
+            ? current
+            : [
+                {
+                  id: activeThread.id,
+                  title: null,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString(),
+                },
+                ...current,
+              ],
+        )
         navigate(`/chat/${activeThread.id}`, { replace: true })
       }
 
@@ -205,18 +228,22 @@ export function ChatPage() {
       await refreshThreads()
       setStatus({ state: 'idle' })
       setRunStage(null)
+      activeSendThreadIdRef.current = null
+      return true
     } catch (error) {
       window.clearInterval(stageTimer)
       setRunStage(null)
+      activeSendThreadIdRef.current = null
       if (error instanceof ApiError && error.status === 403) {
         setStatus({ state: 'forbidden' })
-        return
+        return false
       }
 
       setStatus({
         state: 'error',
         message: errorMessage(error),
       })
+      return false
     } finally {
       window.clearInterval(stageTimer)
     }
@@ -268,7 +295,7 @@ export function ChatPage() {
           <p className="border-t border-border px-4 py-2 text-sm text-destructive">{status.message}</p>
         ) : null}
 
-        <MessageComposer disabled={status.state === 'loading' || status.state === 'streaming'} onSubmit={handleSend} />
+        <MessageComposer disabled={isBusy} onSubmit={handleSend} />
       </section>
 
       <SourcePassagePanel citation={selectedCitation} />

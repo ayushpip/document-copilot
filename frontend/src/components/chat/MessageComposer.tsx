@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button'
 
 type MessageComposerProps = {
   disabled: boolean
-  onSubmit: (content: string) => Promise<void>
+  onSubmit: (content: string) => Promise<boolean>
 }
 
 export function MessageComposer({ disabled, onSubmit }: MessageComposerProps) {
@@ -19,8 +19,10 @@ export function MessageComposer({ disabled, onSubmit }: MessageComposerProps) {
       return
     }
 
-    setContent('')
-    await onSubmit(trimmed)
+    const wasAccepted = await onSubmit(trimmed)
+    if (wasAccepted) {
+      setContent('')
+    }
   }
 
   return (

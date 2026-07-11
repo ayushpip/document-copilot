@@ -1,6 +1,7 @@
 """Chat shell API routes."""
 
 from collections.abc import Iterable
+import logging
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
@@ -16,6 +17,8 @@ from app.chat.streaming import stream_text_deltas
 from app.database.models import ChatMessage, DocumentChunk
 from app.database.session import get_session
 from app.grounding import GroundingValidationError
+
+logger = logging.getLogger(__name__)
 
 
 def get_app_user(current_user: CurrentUser, db: Session):
@@ -112,6 +115,13 @@ async def stream_chat(
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Assistant response failed grounding validation.",
+        ) from exc
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Chat stream failed.")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Chat stream failed. Check the backend logs for the underlying error.",
         ) from exc
     db.commit()
 

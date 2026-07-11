@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from app.assistant.agent import build_agent_prompt
+from app.assistant.agent import build_agent_prompt, calculate_growth_percentage, calculate_margin_percentage
 from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings
 
 
@@ -32,3 +32,30 @@ def test_build_agent_prompt_includes_question_and_chunk_ids() -> None:
     assert "What changed?" in prompt
     assert str(chunk_id) in prompt
     assert "Services net sales increased." in prompt
+
+
+def test_build_agent_prompt_includes_analysis_guardrails() -> None:
+    result = RetrievalResult(
+        query="Microsoft cloud margins",
+        passages=[],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="MSFT"),
+    )
+
+    prompt = build_agent_prompt("Compare revenue growth and operating margins.", result)
+
+    assert "operating margin as operating income divided by revenue" in prompt
+    assert "do not use operating income growth as a substitute" in prompt
+    assert "If the retrieved evidence is incomplete" in prompt
+
+
+def test_calculate_growth_percentage() -> None:
+    result = calculate_growth_percentage(current_value=106_265, previous_value=87_464)
+
+    assert result["growth_percentage"] == 21.5
+
+
+def test_calculate_margin_percentage() -> None:
+    result = calculate_margin_percentage(numerator=44_589, denominator=106_265)
+
+    assert result["margin_percentage"] == 42.0
