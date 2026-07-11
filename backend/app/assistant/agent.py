@@ -11,6 +11,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from sqlalchemy.orm import Session
 
 from app.config import settings
+from app.assistant.evidence import AnswerPlan, EvidenceBrief, format_answer_plan, format_evidence_brief
 from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings, retrieve_source_passages
 
 
@@ -39,6 +40,8 @@ class DocumentAgentDeps:
 
     db: Session
     retrieval_result: RetrievalResult
+    evidence_brief: EvidenceBrief | None = None
+    answer_plan: AnswerPlan | None = None
 
     @property
     def allowed_passages(self) -> dict[UUID, RetrievedPassage]:
@@ -187,13 +190,30 @@ def build_agent_prompt(question: str, retrieval_result: RetrievalResult) -> str:
     )
 
 
+def build_grounded_answer_prompt(question: str, deps: DocumentAgentDeps) -> str:
+    evidence_text = format_answer_plan(deps.answer_plan) if deps.answer_plan else None
+    if evidence_text is None:
+        evidence_text = (
+            format_evidence_brief(deps.evidence_brief)
+            if deps.evidence_brief
+            else "No structured evidence brief was prepared."
+        )
+    return (
+        f"{build_agent_prompt(question, deps.retrieval_result)}\n\n"
+        "Structured evidence brief:\n"
+        f"{evidence_text}\n\n"
+        "Use the structured evidence brief as the preferred source for numeric and comparative claims. "
+        "If the structured evidence conflicts with raw passage prose, use the structured evidence and cite its source chunks."
+    )
+
+
 def run_document_agent(question: str, deps: DocumentAgentDeps) -> GroundedAnswer:
     document_agent = create_document_agent()
-    result = document_agent.run_sync(build_agent_prompt(question, deps.retrieval_result), deps=deps)
+    result = document_agent.run_sync(build_grounded_answer_prompt(question, deps), deps=deps)
     return result.output
 
 
 async def run_document_agent_async(question: str, deps: DocumentAgentDeps) -> GroundedAnswer:
     document_agent = create_document_agent()
-    result = await document_agent.run(build_agent_prompt(question, deps.retrieval_result), deps=deps)
+    result = await document_agent.run(build_grounded_answer_prompt(question, deps), deps=deps)
     return result.output

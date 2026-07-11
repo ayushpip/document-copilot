@@ -135,7 +135,22 @@ Goal: analysts can verify every claim in one click — this is what makes the pr
 - [X] Loading/streaming status during assistant run
 - [X] Verify: click a citation → see the exact passage from the filing
 
-## 10. Validation and client readiness
+## Phase 10 — Structured evidence & answer verification
+
+Goal: answers are built from a verified evidence table before final prose, so numeric and comparative answers are trustworthy.
+
+- [X] `assistant/evidence.py` — typed evidence rows for company, filing year, metric, value, unit, source chunk, and quote
+- [X] Evidence extraction step — convert retrieved passages into structured facts before final answer generation
+- [X] Coverage check — identify requested companies, years, segments, products, and metrics; flag missing evidence
+- [X] Deterministic calculations — growth rates, operating margins, and period comparisons computed in code
+- [X] Answer planner — produce a cited evidence table and interpretation outline before final response
+- [X] Grounding validator upgrade — every numeric claim maps to a structured evidence row or calculation
+- [X] Chat orchestrator update — retrieve → extract evidence → calculate/verify → final agent answer → validate → persist
+- [X] Unit tests: evidence extraction models, coverage checks, calculations, numeric claim validation
+- [ ] Verify: Apple revenue mix answer uses complete 2021-2025 product table
+- [ ] Verify: Microsoft cloud answer distinguishes revenue growth, operating income growth, and operating margin percentage
+
+## 11. Validation and client readiness
 - [ ] Test all sample questions from the client brief manually
 - [ ] Verify answers return cited source passages for every claim
 - [ ] Confirm no hallucinations or unsupported inference leaks through
@@ -143,7 +158,7 @@ Goal: analysts can verify every claim in one click — this is what makes the pr
 - [ ] Validate analyst workflow: ask question, inspect source, save chat
 - [ ] Write a quick “pilot checklist” for the first 5 analysts
 
-## 11. Deployment and launch
+## 12. Deployment and launch
 - [ ] Choose a host for backend and frontend (Railway, Vercel, etc.)
 - [ ] Deploy backend, frontend, and connect to Supabase
 - [ ] Set production environment variables securely

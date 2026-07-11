@@ -1,0 +1,180 @@
+from uuid import uuid4
+
+import pytest
+
+from app.assistant.evidence import (
+    EvidenceValidationError,
+    build_answer_plan,
+    build_evidence_brief,
+    extract_evidence,
+    format_answer_plan,
+    format_evidence_brief,
+    validate_numeric_claims,
+)
+from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings
+
+
+def make_result(content: str) -> RetrievalResult:
+    return RetrievalResult(
+        query="Compare Microsoft cloud revenue growth and operating margins from 2023-2025.",
+        passages=[
+            RetrievedPassage(
+                chunk_id=uuid4(),
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=84,
+                content=content,
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="MSFT"),
+    )
+
+
+def test_extract_evidence_preserves_grouped_segment_context() -> None:
+    result = make_result(
+        """
+Segment revenue, cost of revenue, operating expenses, and operating income were as follows during the periods presented:
+
+|  | 2025 | 2024 | 2023 |
+| --- | --- | --- | --- |
+| Intelligent Cloud |  |  |  |
+| Revenue | 106,265 | 87,464 | 72,944 |
+| Operating Income | 44,589 | 37,813 | 28,411 |
+"""
+    )
+
+    rows = extract_evidence(result)
+
+    assert {row.metric for row in rows} == {"Intelligent Cloud Revenue", "Intelligent Cloud Operating Income"}
+    assert next(row for row in rows if row.metric == "Intelligent Cloud Revenue" and row.filing_year == 2025).value == 106_265
+    assert (
+        next(row for row in rows if row.metric == "Intelligent Cloud Operating Income" and row.filing_year == 2025).value
+        == 44_589
+    )
+
+
+def test_build_evidence_brief_calculates_growth_and_margin() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 |
+| --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 87,464 |
+| Operating Income | 44,589 | 37,813 |
+"""
+    )
+
+    brief = build_evidence_brief("Compare Microsoft cloud revenue growth and operating margins from 2024-2025.", result)
+    labels = {calculation.label: calculation.value for calculation in brief.calculations}
+
+    assert labels["MSFT Intelligent Cloud Revenue growth 2024-2025"] == 21.5
+    assert labels["MSFT intelligent cloud operating margin 2025"] == 42.0
+    assert not brief.coverage_gaps
+
+
+def test_build_evidence_brief_flags_missing_requested_years() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 |
+| --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 87,464 |
+"""
+    )
+
+    brief = build_evidence_brief("Compare Microsoft cloud revenue growth from 2023-2025.", result)
+
+    assert [gap.value for gap in brief.coverage_gaps] == ["2023"]
+
+
+def test_build_answer_plan_flags_requested_company_and_product_gaps() -> None:
+    result = make_result(
+        """
+|  | 2025 |
+| --- | --- |
+| Intelligent Cloud |  |
+| Revenue | 106,265 |
+"""
+    )
+
+    plan = build_answer_plan("Compare Apple iPhone revenue and Microsoft cloud revenue in 2025.", result)
+    gaps = {(gap.dimension, gap.value) for gap in plan.evidence_brief.coverage_gaps}
+
+    assert ("company", "AAPL") in gaps
+    assert ("segment_or_product", "iphone") in gaps
+    assert any(item.startswith("State coverage gaps clearly") for item in plan.interpretation_outline)
+
+
+def test_format_evidence_brief_includes_source_chunks_and_calculations() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 |
+| --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 87,464 |
+"""
+    )
+    brief = build_evidence_brief("Compare Microsoft cloud revenue growth from 2024-2025.", result)
+
+    formatted = format_evidence_brief(brief)
+
+    assert "Intelligent Cloud Revenue" in formatted
+    assert "Deterministic calculations" in formatted
+    assert str(brief.rows[0].source_chunk_id) in formatted
+
+
+def test_format_answer_plan_includes_interpretation_outline() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 |
+| --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 87,464 |
+"""
+    )
+    plan = build_answer_plan("Compare Microsoft cloud revenue growth from 2024-2025.", result)
+
+    formatted = format_answer_plan(plan)
+
+    assert "Interpretation outline" in formatted
+    assert "Use deterministic calculations" in formatted
+
+
+def test_validate_numeric_claims_accepts_evidence_and_calculated_values() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 |
+| --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 87,464 |
+| Operating Income | 44,589 | 37,813 |
+"""
+    )
+    brief = build_evidence_brief("Compare Microsoft cloud revenue growth and operating margins from 2024-2025.", result)
+
+    validate_numeric_claims(
+        "Revenue was $106,265 million and operating margin was approximately 42.0%.",
+        brief,
+    )
+
+
+def test_validate_numeric_claims_rejects_unsupported_values() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 |
+| --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 87,464 |
+"""
+    )
+    brief = build_evidence_brief("Compare Microsoft cloud revenue growth from 2024-2025.", result)
+
+    with pytest.raises(EvidenceValidationError):
+        validate_numeric_claims("Revenue was $123,456 million.", brief)

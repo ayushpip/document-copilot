@@ -52,7 +52,7 @@ function errorMessage(error: unknown) {
     return 'Session expired. Please sign in again.'
   }
   if (error.status === 502) {
-    return 'The assistant could not validate its citations. Try rephrasing or narrowing the question.'
+    return 'The assistant could not validate its citations or evidence. Try rephrasing or narrowing the question.'
   }
   if (error.isNetworkError || error.status === 0) {
     return 'Network or CORS error. Check that the backend is running and reachable.'

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.assistant import DocumentAgentDeps, GroundedAnswer, run_document_agent, run_document_agent_async
+from app.assistant.evidence import EvidenceBrief, build_answer_plan, validate_numeric_claims
 from app.chat import service
 from app.database.models import ChatMessage, ChatThread, MessageCitation
 from app.grounding import repair_grounded_answer, validate_grounded_answer
@@ -21,6 +22,7 @@ class ChatTurnResult:
     assistant_message: ChatMessage
     answer: GroundedAnswer
     retrieval_result: RetrievalResult
+    evidence_brief: EvidenceBrief
 
 
 def _citation_source(citation_chunk_id, passages: dict) -> str:
@@ -74,10 +76,18 @@ def run_chat_turn(
         retrieval_settings=retrieval_settings or RetrievalSettings(),
     )
 
-    deps = DocumentAgentDeps(db=db, retrieval_result=retrieval_result)
+    answer_plan = build_answer_plan(clean_question, retrieval_result)
+    evidence_brief = answer_plan.evidence_brief
+    deps = DocumentAgentDeps(
+        db=db,
+        retrieval_result=retrieval_result,
+        evidence_brief=evidence_brief,
+        answer_plan=answer_plan,
+    )
     answer = agent_runner(clean_question, deps)
     answer = repair_grounded_answer(answer, retrieval_result)
     validate_grounded_answer(answer, retrieval_result)
+    validate_numeric_claims(answer.answer, evidence_brief)
 
     assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
     persist_message_citations(db, assistant_message, answer)
@@ -87,6 +97,7 @@ def run_chat_turn(
         assistant_message=assistant_message,
         answer=answer,
         retrieval_result=retrieval_result,
+        evidence_brief=evidence_brief,
     )
 
 
@@ -107,10 +118,18 @@ async def run_chat_turn_async(
         retrieval_settings=retrieval_settings or RetrievalSettings(),
     )
 
-    deps = DocumentAgentDeps(db=db, retrieval_result=retrieval_result)
+    answer_plan = build_answer_plan(clean_question, retrieval_result)
+    evidence_brief = answer_plan.evidence_brief
+    deps = DocumentAgentDeps(
+        db=db,
+        retrieval_result=retrieval_result,
+        evidence_brief=evidence_brief,
+        answer_plan=answer_plan,
+    )
     answer = await agent_runner(clean_question, deps)
     answer = repair_grounded_answer(answer, retrieval_result)
     validate_grounded_answer(answer, retrieval_result)
+    validate_numeric_claims(answer.answer, evidence_brief)
 
     assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
     persist_message_citations(db, assistant_message, answer)
@@ -120,4 +139,5 @@ async def run_chat_turn_async(
         assistant_message=assistant_message,
         answer=answer,
         retrieval_result=retrieval_result,
+        evidence_brief=evidence_brief,
     )

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.auth import CurrentUser, get_current_user
+from app.assistant.evidence import EvidenceValidationError
 from app.chat import service
 from app.chat.orchestrator import run_chat_turn_async
 from app.chat.schemas import ChatCitationResponse, ChatMessageResponse, ChatStreamRequest, ChatThreadCreate, ChatThreadResponse
@@ -110,11 +111,11 @@ async def stream_chat(
     user_message = service.latest_user_message(payload.messages)
     try:
         turn = await run_chat_turn_async(db, thread, user_message.content)
-    except GroundingValidationError as exc:
+    except (GroundingValidationError, EvidenceValidationError) as exc:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Assistant response failed grounding validation.",
+            detail="Assistant response failed grounding or evidence validation.",
         ) from exc
     except Exception as exc:
         db.rollback()
