@@ -186,7 +186,7 @@ def test_run_chat_turn_falls_back_to_verified_evidence_when_model_numbers_fail(m
 
     turn = orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
 
-    assert "verified evidence table" in turn.answer.answer
+    assert "Verified evidence summary" in turn.answer.answer
     assert "106,265" not in turn.answer.answer
     assert "106265" in turn.answer.answer
     assert turn.evidence_brief == evidence_brief

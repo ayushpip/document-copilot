@@ -37,6 +37,15 @@ def test_build_targeted_evidence_queries_uses_requested_terms_and_years() -> Non
 
     assert any("intelligent cloud" in query for query in queries)
     assert any("2022" in query for query in queries)
+    assert "segment revenue operating income" not in queries
+
+
+def test_build_targeted_evidence_queries_uses_defaults_without_specific_terms() -> None:
+    result = make_result()
+    brief = build_evidence_brief("Compare financial performance.", result)
+
+    queries = build_targeted_evidence_queries("Compare financial performance.", brief)
+
     assert "segment revenue operating income" in queries
 
 

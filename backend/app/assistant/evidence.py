@@ -309,6 +309,8 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
     companies = requested_companies(question)
     years = requested_years(question)
     terms = requested_terms(question)
+    lower_question = question.lower()
+    include_total_rows = any(term in lower_question for term in ("mix", "share", "total", "percentage of", "proportion"))
 
     if companies:
         filtered_rows = [row for row in filtered_rows if row.company in companies]
@@ -318,7 +320,8 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
         relevant_rows = [
             row
             for row in filtered_rows
-            if any(term in row.metric.lower() for term in terms) or row.metric.lower() in {"total net sales", "total revenue"}
+            if any(term in row.metric.lower() for term in terms)
+            or (include_total_rows and row.metric.lower() in {"total net sales", "total revenue"})
         ]
         if relevant_rows:
             filtered_rows = relevant_rows
@@ -375,16 +378,34 @@ def _canonical_metric(metric: str) -> str:
 def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
     calculations = []
     seen_calculations = set()
+    conflicted_keys = {
+        (row.company, row.filing_year, _canonical_metric(row.metric))
+        for row in rows
+        if len(
+            {
+                candidate.value
+                for candidate in rows
+                if candidate.company == row.company
+                and candidate.filing_year == row.filing_year
+                and _canonical_metric(candidate.metric) == _canonical_metric(row.metric)
+            }
+        )
+        > 1
+    }
     rows_by_company_metric: dict[tuple[str, str], list[EvidenceRow]] = defaultdict(list)
     rows_by_company_year: dict[tuple[str, int], list[EvidenceRow]] = defaultdict(list)
 
     for row in rows:
+        if (row.company, row.filing_year, _canonical_metric(row.metric)) in conflicted_keys:
+            continue
         rows_by_company_metric[(row.company, _canonical_metric(row.metric))].append(row)
         rows_by_company_year[(row.company, row.filing_year)].append(row)
 
     for metric_rows in rows_by_company_metric.values():
         sorted_rows = sorted(metric_rows, key=lambda row: row.filing_year)
         for previous, current in zip(sorted_rows, sorted_rows[1:], strict=False):
+            if current.filing_year != previous.filing_year + 1:
+                continue
             for calculation in [
                 calculate_growth_percentage(current, previous),
                 calculate_absolute_change(current, previous),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
@@ -67,25 +68,37 @@ def fallback_grounded_answer(evidence_brief: EvidenceBrief) -> GroundedAnswer | 
     if not evidence_brief.rows:
         return None
 
-    row_lines = [
-        f"- {row.company} {row.filing_year} {row.metric}: {row.value:g} {row.unit} "
-        f"(chunk_id: {row.source_chunk_id})"
-        for row in evidence_brief.rows
+    rows_by_metric: dict[str, list] = defaultdict(list)
+    for row in evidence_brief.rows:
+        rows_by_metric[row.metric].append(row)
+
+    sections = [
+        "Verified evidence summary:",
+        "This numeric comparison is based directly on extracted filing evidence and deterministic calculations.",
     ]
+    if evidence_brief.conflicts:
+        sections.append(
+            "Important caveat: the retrieved filings contain conflicting/recast segment values. "
+            "Do not read conflicting years as one clean like-for-like trend without checking the basis."
+        )
+
+    evidence_lines = []
+    for metric, metric_rows in sorted(rows_by_metric.items()):
+        values = ", ".join(
+            f"{row.filing_year}: {row.value:g} {row.unit} (chunk {row.source_chunk_index})"
+            for row in sorted(metric_rows, key=lambda item: (item.filing_year, item.value))
+        )
+        evidence_lines.append(f"- {metric}: {values}")
+    sections.append("\nEvidence:\n" + "\n".join(evidence_lines[:24]))
+
     calculation_lines = [
-        f"- {calculation.label}: {calculation.value:g}{calculation.unit} "
-        f"using {calculation.formula} (source chunks: "
-        f"{', '.join(str(chunk_id) for chunk_id in calculation.source_chunk_ids)})"
+        f"- {calculation.label}: {calculation.value:g}{calculation.unit}"
         for calculation in evidence_brief.calculations
     ]
-    conflict_lines = [f"- {conflict}" for conflict in evidence_brief.conflicts]
-
-    sections = ["I could not safely use the generated prose, so I am returning the verified evidence table instead."]
-    sections.append("\nEvidence:\n" + "\n".join(row_lines[:40]))
     if calculation_lines:
-        sections.append("\nCalculated comparisons:\n" + "\n".join(calculation_lines[:40]))
-    if conflict_lines:
-        sections.append("\nEvidence conflicts or filing recasts to review:\n" + "\n".join(conflict_lines[:20]))
+        sections.append("\nSafe calculated comparisons:\n" + "\n".join(calculation_lines[:24]))
+    if evidence_brief.conflicts:
+        sections.append("\nConflicts/recasts to review:\n" + "\n".join(f"- {conflict}" for conflict in evidence_brief.conflicts[:12]))
 
     citations = [
         GroundedCitation(

@@ -152,6 +152,43 @@ Revenue, 1 = 87,464.
     assert any("conflicting extracted values" in item for item in plan.interpretation_outline)
 
 
+def test_build_evidence_brief_skips_calculations_from_conflicting_values() -> None:
+    result = make_result(
+        """
+|  | 2025 | 2024 | 2023 |
+| --- | --- | --- | --- |
+| Intelligent Cloud |  |  |
+| Revenue | 106,265 | 105,362 | 72,944 |
+
+(In millions), 1 = 2024.
+Intelligent Cloud, 1 = .
+Revenue, 1 = 87,464.
+"""
+    )
+
+    brief = build_evidence_brief("Compare Microsoft Intelligent Cloud revenue growth from 2024-2025.", result)
+
+    assert brief.conflicts
+    assert not any("Intelligent Cloud Revenue growth" in calculation.label for calculation in brief.calculations)
+
+
+def test_build_evidence_brief_only_keeps_totals_when_question_needs_mix_context() -> None:
+    result = make_result(
+        """
+|  | 2025 |
+| --- | --- |
+| iPhone | 209,586 |
+| Total net sales | 416,161 |
+"""
+    )
+
+    trend_brief = build_evidence_brief("Compare iPhone revenue trend in 2025.", result)
+    mix_brief = build_evidence_brief("Compare iPhone revenue mix in 2025.", result)
+
+    assert {row.metric for row in trend_brief.rows} == {"iPhone"}
+    assert {row.metric for row in mix_brief.rows} == {"iPhone", "Total net sales"}
+
+
 def test_format_evidence_brief_includes_source_chunks_and_calculations() -> None:
     result = make_result(
         """

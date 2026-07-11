@@ -25,6 +25,13 @@ DEFAULT_RECOVERY_QUERIES = (
     "revenue operating income",
     "net sales revenue",
 )
+MAX_TARGETED_QUERIES = 8
+
+
+def _append_query(queries: list[str], query: str) -> None:
+    clean_query = " ".join(query.split())
+    if clean_query and clean_query not in queries:
+        queries.append(clean_query)
 
 
 def build_targeted_evidence_queries(question: str, brief: EvidenceBrief) -> list[str]:
@@ -43,17 +50,19 @@ def build_targeted_evidence_queries(question: str, brief: EvidenceBrief) -> list
     if not query_parts:
         query_parts.extend(DEFAULT_RECOVERY_QUERIES)
 
-    queries = set()
+    queries = []
     base_query = " ".join(query_parts)
     if base_query:
-        queries.add(base_query)
+        _append_query(queries, base_query)
     for year in years:
-        queries.add(f"{base_query} {year}".strip())
+        _append_query(queries, f"{base_query} {year}")
     for gap in gap_values:
-        queries.add(f"{base_query} {gap}".strip())
-    queries.update(DEFAULT_RECOVERY_QUERIES)
+        _append_query(queries, f"{base_query} {gap}")
+    if not terms:
+        for default_query in DEFAULT_RECOVERY_QUERIES:
+            _append_query(queries, default_query)
 
-    return [query for query in queries if query]
+    return queries[:MAX_TARGETED_QUERIES]
 
 
 def _passage_from_hit(hit: SearchHit, rank: int, neighbor_chunks: list[str]) -> RetrievedPassage:
