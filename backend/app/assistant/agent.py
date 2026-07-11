@@ -180,6 +180,8 @@ def build_agent_prompt(question: str, retrieval_result: RetrievalResult) -> str:
         "- If the question asks about margins and the evidence includes revenue and operating income, calculate "
         "operating margin as operating income divided by revenue; do not use operating income growth as a substitute "
         "for margin percentage. Use the calculator tool for margin and growth calculations.\n"
+        "- Do not treat reportable-segment operating income as market-platform revenue. For example, NVIDIA "
+        "Compute & Networking operating income is not the same thing as Data Center revenue.\n"
         "- Check every trend word against the numbers. Do not say a metric steadily improved, consistently grew, "
         "or peaked unless the cited values support that exact wording.\n"
         "- If the retrieved evidence is incomplete for a requested period/category, say what is missing instead of "

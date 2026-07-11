@@ -193,6 +193,66 @@ def test_run_chat_turn_falls_back_to_verified_evidence_when_model_numbers_fail(m
     assert [message.role for message in saved_messages] == ["user", "assistant"]
 
 
+def test_run_chat_turn_revalidates_after_agent_adds_tool_passages(monkeypatch) -> None:
+    initial_result = make_retrieval_result()
+    tool_chunk_id = uuid4()
+    saved_messages = []
+
+    def fake_retrieve_source_passages(*args, **kwargs):
+        return initial_result
+
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return initial_result, build_answer_plan("Microsoft cloud revenue", initial_result)
+
+    def fake_save_message(db, thread, role, content):
+        message = SimpleNamespace(id=uuid4(), role=role, content=content)
+        saved_messages.append(message)
+        return message
+
+    def fake_agent_runner(question, deps):
+        deps.retrieval_result.passages.append(
+            RetrievedPassage(
+                chunk_id=tool_chunk_id,
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=84,
+                content=(
+                    "|  | 2025 | 2024 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Intelligent Cloud |  |  |\n"
+                    "| Revenue | 106,265 | 87,464 |"
+                ),
+                metadata={},
+                rank=2,
+                fused_score=0.1,
+            )
+        )
+        return GroundedAnswer(
+            answer="Microsoft Intelligent Cloud revenue was $123,456 million.",
+            citations=[
+                GroundedCitation(
+                    chunk_id=tool_chunk_id,
+                    claim="Unsupported number.",
+                    supporting_quote="| Revenue | 106,265 | 87,464 |",
+                )
+            ],
+        )
+
+    monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
+    monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
+
+    turn = orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
+
+    assert "Verified evidence summary" in turn.answer.answer
+    assert "123456" not in turn.answer.answer
+    assert any(passage.chunk_id == tool_chunk_id for passage in turn.retrieval_result.passages)
+    assert [message.role for message in saved_messages] == ["user", "assistant"]
+
+
 @pytest.mark.anyio
 async def test_run_chat_turn_async_uses_async_agent_runner(monkeypatch) -> None:
     retrieval_result = make_retrieval_result()

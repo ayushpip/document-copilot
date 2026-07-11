@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from sqlalchemy.orm import Session
 
 from app.assistant import DocumentAgentDeps, GroundedAnswer, GroundedCitation, run_document_agent, run_document_agent_async
-from app.assistant.evidence import EvidenceBrief, EvidenceValidationError, validate_numeric_claims
+from app.assistant.evidence import EvidenceBrief, EvidenceValidationError, build_answer_plan, validate_numeric_claims
 from app.assistant.evidence_retrieval import build_recovered_answer_plan
 from app.chat import service
 from app.database.models import ChatMessage, ChatThread, MessageCitation
@@ -161,16 +161,19 @@ def run_chat_turn(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    answer = validate_or_fallback_answer(agent_runner(clean_question, deps), retrieval_result, evidence_brief)
+    model_answer = agent_runner(clean_question, deps)
+    refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
+    evidence_brief = refreshed_answer_plan.evidence_brief
+    answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)
 
-    assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
+    assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, deps.retrieval_result))
     persist_message_citations(db, assistant_message, answer)
 
     return ChatTurnResult(
         user_message=user_message,
         assistant_message=assistant_message,
         answer=answer,
-        retrieval_result=retrieval_result,
+        retrieval_result=deps.retrieval_result,
         evidence_brief=evidence_brief,
     )
 
@@ -200,15 +203,18 @@ async def run_chat_turn_async(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    answer = validate_or_fallback_answer(await agent_runner(clean_question, deps), retrieval_result, evidence_brief)
+    model_answer = await agent_runner(clean_question, deps)
+    refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
+    evidence_brief = refreshed_answer_plan.evidence_brief
+    answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)
 
-    assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
+    assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, deps.retrieval_result))
     persist_message_citations(db, assistant_message, answer)
 
     return ChatTurnResult(
         user_message=user_message,
         assistant_message=assistant_message,
         answer=answer,
-        retrieval_result=retrieval_result,
+        retrieval_result=deps.retrieval_result,
         evidence_brief=evidence_brief,
     )

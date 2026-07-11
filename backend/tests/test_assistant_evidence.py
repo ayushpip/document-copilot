@@ -80,6 +80,75 @@ Intelligent Cloud, 1 = 49,584. Intelligent Cloud, 2 = 37,884.
     )
 
 
+def test_extract_evidence_handles_market_platform_prose_growth_and_values() -> None:
+    result = RetrievalResult(
+        query="Compare NVIDIA Data Center and Gaming revenue growth.",
+        passages=[
+            RetrievedPassage(
+                chunk_id=uuid4(),
+                source_document_id=uuid4(),
+                company="NVDA",
+                filing_year=2024,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=36,
+                content=(
+                    "Revenue for fiscal year 2024 was $60.9 billion, up 126% from a year ago.\n"
+                    "Data Center revenue for fiscal year 2024 was $47.5 billion, up 217% from fiscal year 2023.\n"
+                    "Gaming revenue for fiscal year 2024 was $10.4 billion, up 15% from fiscal year 2023."
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="NVDA"),
+    )
+
+    rows = extract_evidence(result)
+
+    assert next(row for row in rows if row.metric == "Data Center Revenue").value == 47_500
+    assert next(row for row in rows if row.metric == "Gaming Revenue").value == 10_400
+    assert next(row for row in rows if row.metric == "Data Center Revenue growth").value == 217
+    assert next(row for row in rows if row.metric == "Gaming Revenue growth").value == 15
+    assert next(row for row in rows if row.metric == "Total Revenue").value == 60_900
+
+
+def test_validate_numeric_claims_rejects_reportable_segment_income_as_data_center_revenue() -> None:
+    result = RetrievalResult(
+        query="Compare NVIDIA Data Center and Gaming revenue growth.",
+        passages=[
+            RetrievedPassage(
+                chunk_id=uuid4(),
+                source_document_id=uuid4(),
+                company="NVDA",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=40,
+                content=(
+                    "Data Center revenue for fiscal year 2025 was up 142% from a year ago.\n"
+                    "Gaming revenue for fiscal year 2025 was up 9% from a year ago.\n"
+                    "|  | 2025 | 2024 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Compute & Networking | 82,875 | 32,016 |"
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="NVDA"),
+    )
+    brief = build_evidence_brief("Compare NVIDIA Data Center and Gaming revenue growth.", result)
+
+    assert {row.metric for row in brief.rows} == {"Data Center Revenue growth", "Gaming Revenue growth"}
+    with pytest.raises(EvidenceValidationError):
+        validate_numeric_claims("Data Center revenue was $82.875 billion.", brief)
+
+
 def test_build_evidence_brief_calculates_growth_and_margin() -> None:
     result = make_result(
         """

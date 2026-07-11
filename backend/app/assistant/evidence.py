@@ -14,6 +14,27 @@ YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
 NUMBER_PATTERN = re.compile(r"\(?-?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*\)?")
 ASSIGNMENT_PATTERN = re.compile(r"([^.,]+?),\s*(\d+)\s*=\s*([^.]*)\.")
 TABLE_SEPARATOR_PATTERN = re.compile(r"^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$")
+PROSE_REVENUE_VALUE_PATTERN = re.compile(
+    r"\b(?P<label>Data Center|Gaming|Professional Visualization|Automotive)\s+revenue\s+"
+    r"for fiscal year (?P<year>20\d{2}) was \$(?P<value>[0-9]+(?:\.[0-9]+)?)\s*(?P<scale>billion|million)",
+    re.IGNORECASE,
+)
+PROSE_TOTAL_REVENUE_VALUE_PATTERN = re.compile(
+    r"(?:^|[.\n]\s*)Revenue\s+for fiscal year (?P<year>20\d{2}) was "
+    r"\$(?P<value>[0-9]+(?:\.[0-9]+)?)\s*(?P<scale>billion|million)",
+    re.IGNORECASE,
+)
+PROSE_REVENUE_GROWTH_PATTERN = re.compile(
+    r"\b(?P<label>Data Center|Gaming|Professional Visualization|Automotive)\s+revenue\s+"
+    r"for fiscal year (?P<year>20\d{2}) was (?P<direction>up|down) (?P<value>[0-9]+(?:\.[0-9]+)?)%",
+    re.IGNORECASE,
+)
+PROSE_REVENUE_VALUE_AND_GROWTH_PATTERN = re.compile(
+    r"\b(?P<label>Data Center|Gaming|Professional Visualization|Automotive)\s+revenue\s+"
+    r"for fiscal year (?P<year>20\d{2}) was \$[0-9]+(?:\.[0-9]+)?\s*(?:billion|million), "
+    r"(?P<direction>up|down) (?P<value>[0-9]+(?:\.[0-9]+)?)%",
+    re.IGNORECASE,
+)
 KNOWN_FINANCIAL_METRICS = {
     "revenue",
     "operating income",
@@ -46,6 +67,7 @@ KNOWN_SEGMENTS_AND_PRODUCTS = {
     "server products and cloud services",
     "azure",
     "data center",
+    "gaming",
 }
 
 
@@ -286,6 +308,82 @@ def _flattened_rows_from_passage(passage: RetrievedPassage, text: str) -> list[E
     return rows
 
 
+def _scale_to_millions(value: float, scale: str) -> float:
+    return value * 1000 if scale.lower() == "billion" else value
+
+
+def _prose_rows_from_passage(passage: RetrievedPassage, text: str) -> list[EvidenceRow]:
+    rows = []
+    for match in PROSE_REVENUE_VALUE_PATTERN.finditer(text):
+        label = " ".join(match.group("label").split())
+        rows.append(
+            EvidenceRow(
+                company=passage.company,
+                filing_year=int(match.group("year")),
+                filing_type=passage.filing_type,
+                metric=f"{label} Revenue",
+                value=_scale_to_millions(float(match.group("value")), match.group("scale")),
+                unit="USD millions",
+                source_filing_year=passage.filing_year,
+                source_chunk_id=passage.chunk_id,
+                source_chunk_index=passage.chunk_index,
+                quote=match.group(0).strip(),
+            )
+        )
+
+    for match in PROSE_TOTAL_REVENUE_VALUE_PATTERN.finditer(text):
+        rows.append(
+            EvidenceRow(
+                company=passage.company,
+                filing_year=int(match.group("year")),
+                filing_type=passage.filing_type,
+                metric="Total Revenue",
+                value=_scale_to_millions(float(match.group("value")), match.group("scale")),
+                unit="USD millions",
+                source_filing_year=passage.filing_year,
+                source_chunk_id=passage.chunk_id,
+                source_chunk_index=passage.chunk_index,
+                quote=match.group(0).strip(),
+            )
+        )
+
+    for match in PROSE_REVENUE_GROWTH_PATTERN.finditer(text):
+        direction = -1 if match.group("direction").lower() == "down" else 1
+        rows.append(
+            EvidenceRow(
+                company=passage.company,
+                filing_year=int(match.group("year")),
+                filing_type=passage.filing_type,
+                metric=f"{' '.join(match.group('label').split())} Revenue growth",
+                value=direction * float(match.group("value")),
+                unit="%",
+                source_filing_year=passage.filing_year,
+                source_chunk_id=passage.chunk_id,
+                source_chunk_index=passage.chunk_index,
+                quote=match.group(0).strip(),
+            )
+        )
+
+    for match in PROSE_REVENUE_VALUE_AND_GROWTH_PATTERN.finditer(text):
+        direction = -1 if match.group("direction").lower() == "down" else 1
+        rows.append(
+            EvidenceRow(
+                company=passage.company,
+                filing_year=int(match.group("year")),
+                filing_type=passage.filing_type,
+                metric=f"{' '.join(match.group('label').split())} Revenue growth",
+                value=direction * float(match.group("value")),
+                unit="%",
+                source_filing_year=passage.filing_year,
+                source_chunk_id=passage.chunk_id,
+                source_chunk_index=passage.chunk_index,
+                quote=match.group(0).strip(),
+            )
+        )
+
+    return rows
+
+
 def extract_evidence(retrieval_result: RetrievalResult) -> list[EvidenceRow]:
     """Extract structured numeric evidence from retrieved markdown tables."""
 
@@ -296,6 +394,7 @@ def extract_evidence(retrieval_result: RetrievalResult) -> list[EvidenceRow]:
         passage_rows = _table_rows_from_passage(passage)
         for text in [passage.content, *passage.neighbor_chunks]:
             passage_rows.extend(_flattened_rows_from_passage(passage, text))
+            passage_rows.extend(_prose_rows_from_passage(passage, text))
 
         for row in passage_rows:
             key = (row.company, row.filing_year, row.metric.lower(), row.value)
@@ -326,14 +425,13 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
             if any(term in row.metric.lower() for term in terms)
             or (include_total_rows and row.metric.lower() in {"total net sales", "total revenue"})
         ]
-        if relevant_rows:
-            filtered_rows = relevant_rows
+        filtered_rows = relevant_rows
 
     return filtered_rows
 
 
 def calculate_growth_percentage(current: EvidenceRow, previous: EvidenceRow) -> CalculationRow | None:
-    if previous.value == 0:
+    if previous.value == 0 or current.unit == "%" or previous.unit == "%" or current.unit != previous.unit:
         return None
 
     growth = ((current.value - previous.value) / previous.value) * 100
@@ -358,7 +456,7 @@ def calculate_absolute_change(current: EvidenceRow, previous: EvidenceRow) -> Ca
 
 
 def calculate_margin_percentage(numerator: EvidenceRow, denominator: EvidenceRow) -> CalculationRow | None:
-    if denominator.value == 0:
+    if denominator.value == 0 or numerator.unit == "%" or denominator.unit == "%":
         return None
 
     margin = (numerator.value / denominator.value) * 100
@@ -607,8 +705,9 @@ def _claim_numbers(text: str) -> list[tuple[float, bool]]:
 
 
 def _allowed_numeric_values(brief: EvidenceBrief) -> tuple[set[float], set[float]]:
-    money_values = {row.value for row in brief.rows}
-    percent_values = {calculation.value for calculation in brief.calculations if calculation.unit == "%"}
+    money_values = {row.value for row in brief.rows if row.unit != "%"}
+    percent_values = {row.value for row in brief.rows if row.unit == "%"}
+    percent_values.update(calculation.value for calculation in brief.calculations if calculation.unit == "%")
     money_values.update(calculation.value for calculation in brief.calculations if calculation.unit != "%")
 
     scaled_money_values = set(money_values)
