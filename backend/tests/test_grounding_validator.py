@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 
 from app.assistant import GroundedAnswer, GroundedCitation
-from app.grounding import GroundingValidationError, validate_grounded_answer
+from app.grounding import GroundingValidationError, repair_grounded_answer, validate_grounded_answer
 from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings
 
 
@@ -103,3 +103,23 @@ def test_validate_not_enough_evidence_requires_no_citations() -> None:
     answer = GroundedAnswer(answer="There is not enough evidence in the retrieved filings.", not_enough_evidence=True)
 
     validate_grounded_answer(answer, result)
+
+
+def test_repair_grounded_answer_replaces_fuzzy_quote_with_exact_excerpt() -> None:
+    result = make_result()
+    answer = GroundedAnswer(
+        answer="Apple disclosed Services and iPhone sales increased.",
+        citations=[
+            GroundedCitation(
+                chunk_id=result.passages[0].chunk_id,
+                claim="Services and iPhone sales increased.",
+                supporting_quote="Services and iPhone sales went up.",
+            )
+        ],
+    )
+
+    repaired = repair_grounded_answer(answer, result)
+
+    evidence_text = " ".join([result.passages[0].content, *result.passages[0].neighbor_chunks])
+    assert repaired.citations[0].supporting_quote in evidence_text
+    validate_grounded_answer(repaired, result)

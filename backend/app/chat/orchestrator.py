@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.assistant import DocumentAgentDeps, GroundedAnswer, run_document_agent
 from app.chat import service
 from app.database.models import ChatMessage, ChatThread, MessageCitation
-from app.grounding import validate_grounded_answer
+from app.grounding import repair_grounded_answer, validate_grounded_answer
 from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, RetrievalSettings, retrieve_source_passages
 
 AgentRunner = Callable[[str, DocumentAgentDeps], GroundedAnswer]
@@ -75,6 +75,7 @@ def run_chat_turn(
 
     deps = DocumentAgentDeps(db=db, retrieval_result=retrieval_result)
     answer = agent_runner(clean_question, deps)
+    answer = repair_grounded_answer(answer, retrieval_result)
     validate_grounded_answer(answer, retrieval_result)
 
     assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, retrieval_result))
