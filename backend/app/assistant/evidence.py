@@ -13,6 +13,10 @@ from app.retrieval import RetrievedPassage, RetrievalResult
 YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
 NUMBER_PATTERN = re.compile(r"\(?-?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*\)?")
 ASSIGNMENT_PATTERN = re.compile(r"([^.,]+?),\s*(\d+)\s*=\s*([^.]*)\.")
+FLATTENED_ASSIGNMENT_PATTERN = re.compile(
+    r"(?P<label>.+?),\s*(?P<index>\d+)\s*=\s*(?P<value>.*?)(?=\.\s+[^.]+?,\s*\d+\s*=|$)",
+    re.DOTALL,
+)
 TABLE_SEPARATOR_PATTERN = re.compile(r"^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$")
 PROSE_REVENUE_VALUE_PATTERN = re.compile(
     r"\b(?P<label>Data Center|Gaming|Professional Visualization|Automotive)\s+revenue\s+"
@@ -37,8 +41,10 @@ PROSE_REVENUE_VALUE_AND_GROWTH_PATTERN = re.compile(
 )
 KNOWN_FINANCIAL_METRICS = {
     "revenue",
+    "total revenue",
     "operating income",
     "net sales",
+    "total net sales",
     "sales",
     "gross margin",
     "cost of revenue",
@@ -69,6 +75,7 @@ KNOWN_SEGMENTS_AND_PRODUCTS = {
     "data center",
     "gaming",
 }
+KNOWN_REQUESTED_METRICS = KNOWN_SEGMENTS_AND_PRODUCTS | KNOWN_FINANCIAL_METRICS
 
 
 class EvidenceRow(BaseModel):
@@ -308,6 +315,102 @@ def _flattened_rows_from_passage(passage: RetrievedPassage, text: str) -> list[E
     return rows
 
 
+def _docling_assignment_rows_from_passage(passage: RetrievedPassage, text: str) -> list[EvidenceRow]:
+    """Extract rows from Docling's flattened `Label, n = value.` table format."""
+
+    assignments = [
+        (
+            " ".join(match.group("label").strip(" .").split()),
+            int(match.group("index")),
+            match.group("value").strip().rstrip(".").strip(),
+            match.group(0).strip().rstrip("."),
+        )
+        for match in FLATTENED_ASSIGNMENT_PATTERN.finditer(text)
+    ]
+    if not assignments:
+        return []
+
+    indexed_years: dict[int, int] = {}
+    header_years: list[int] = []
+    for label, index, raw_value, _quote in assignments[:20]:
+        label_year = YEAR_PATTERN.fullmatch(label)
+        value_year = YEAR_PATTERN.fullmatch(raw_value)
+        if value_year:
+            indexed_years[index] = int(value_year.group(0))
+        if label_year and value_year:
+            header = int(label_year.group(0))
+            if not header_years:
+                header_years = [header]
+            header_years.append(int(value_year.group(0)))
+
+    rows = []
+    current_metric: str | None = None
+    index = 0
+    while index < len(assignments):
+        label = assignments[index][0]
+        run = []
+        while index < len(assignments) and assignments[index][0] == label:
+            run.append(assignments[index])
+            index += 1
+
+        if YEAR_PATTERN.fullmatch(label):
+            continue
+
+        label_lower = label.lower()
+        numeric_values = [
+            (assignment_index, raw_value, parsed_value, quote)
+            for _label, assignment_index, raw_value, quote in run
+            if "%" not in raw_value
+            for parsed_value in [_parse_number(raw_value)]
+            if parsed_value is not None
+        ]
+        if not numeric_values:
+            if label_lower in KNOWN_FINANCIAL_METRICS:
+                current_metric = label
+            continue
+
+        if label_lower in KNOWN_FINANCIAL_METRICS:
+            metric = _normalize_metric(label)
+        elif current_metric:
+            metric = _normalize_metric(label, current_metric)
+        elif header_years:
+            metric = _normalize_metric(label)
+        else:
+            continue
+
+        if header_years and len(numeric_values) == len(header_years):
+            year_value_pairs = [
+                (year, raw_value, parsed_value, quote)
+                for year, (_assignment_index, raw_value, parsed_value, quote) in zip(
+                    header_years, numeric_values, strict=False
+                )
+            ]
+        else:
+            year_value_pairs = [
+                (indexed_years[assignment_index], raw_value, parsed_value, quote)
+                for assignment_index, raw_value, parsed_value, quote in numeric_values
+                if assignment_index in indexed_years
+            ]
+
+        for year, raw_value, parsed_value, quote in year_value_pairs:
+            rows.append(
+                EvidenceRow(
+                    company=passage.company,
+                    filing_year=year,
+                    filing_type=passage.filing_type,
+                    metric=metric,
+                    value=parsed_value,
+                    unit="USD millions" if "$" in raw_value or "sales" in metric.lower() or "revenue" in metric.lower() else "numeric",
+                    source_filing_year=passage.filing_year,
+                    source_chunk_id=passage.chunk_id,
+                    source_chunk_index=passage.chunk_index,
+                    quote=quote,
+                )
+            )
+
+    return rows
+
+
 def _scale_to_millions(value: float, scale: str) -> float:
     return value * 1000 if scale.lower() == "billion" else value
 
@@ -393,6 +496,7 @@ def extract_evidence(retrieval_result: RetrievalResult) -> list[EvidenceRow]:
     for passage in retrieval_result.passages:
         passage_rows = _table_rows_from_passage(passage)
         for text in [passage.content, *passage.neighbor_chunks]:
+            passage_rows.extend(_docling_assignment_rows_from_passage(passage, text))
             passage_rows.extend(_flattened_rows_from_passage(passage, text))
             passage_rows.extend(_prose_rows_from_passage(passage, text))
 
@@ -413,6 +517,11 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
     terms = requested_terms(question)
     lower_question = question.lower()
     include_total_rows = any(term in lower_question for term in ("mix", "share", "total", "percentage of", "proportion"))
+    exact_total_metric_terms = {
+        term
+        for term in ("total net sales", "total revenue")
+        if term in terms and not any(word in lower_question for word in ("percentage", "proportion", "mix", "share", "portion"))
+    }
 
     if companies:
         filtered_rows = [row for row in filtered_rows if row.company in companies]
@@ -422,8 +531,17 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
         relevant_rows = [
             row
             for row in filtered_rows
-            if any(term in row.metric.lower() for term in terms)
-            or (include_total_rows and row.metric.lower() in {"total net sales", "total revenue"})
+            if (
+                exact_total_metric_terms
+                and _canonical_metric(row.metric) in exact_total_metric_terms
+            )
+            or (
+                not exact_total_metric_terms
+                and (
+                    any(term in row.metric.lower() for term in terms)
+                    or (include_total_rows and row.metric.lower() in {"total net sales", "total revenue"})
+                )
+            )
         ]
         filtered_rows = relevant_rows
 
@@ -555,7 +673,10 @@ def requested_companies(question: str) -> set[str]:
 
 def requested_terms(question: str) -> set[str]:
     lower_question = question.lower()
-    return {term for term in KNOWN_SEGMENTS_AND_PRODUCTS if re.search(rf"\b{re.escape(term)}\b", lower_question)}
+    terms = {term for term in KNOWN_REQUESTED_METRICS if re.search(rf"\b{re.escape(term)}\b", lower_question)}
+    if "operating margin" in lower_question:
+        terms.update({"revenue", "operating income"})
+    return terms
 
 
 def requested_years(question: str) -> set[int]:

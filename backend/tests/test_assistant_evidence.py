@@ -168,6 +168,105 @@ def test_build_evidence_brief_calculates_growth_and_margin() -> None:
     assert not brief.coverage_gaps
 
 
+def test_build_evidence_brief_extracts_requested_apple_total_net_sales() -> None:
+    chunk_id = uuid4()
+    result = RetrievalResult(
+        query="What was Apple's total net sales in fiscal 2025?",
+        passages=[
+            RetrievedPassage(
+                chunk_id=chunk_id,
+                source_document_id=uuid4(),
+                company="AAPL",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=31,
+                content=(
+                    "|  | 2025 | 2024 | 2023 |\n"
+                    "| --- | --- | --- | --- |\n"
+                    "| iPhone | 209,586 | 201,183 | 200,583 |\n"
+                    "| Services (1) | 109,158 | 96,169 | 85,200 |\n"
+                    "| Total net sales | 416,161 | 391,035 | 383,285 |"
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="AAPL"),
+    )
+
+    brief = build_evidence_brief("What was Apple's total net sales in fiscal 2025?", result)
+
+    total_net_sales = next(row for row in brief.rows if row.metric == "Total net sales")
+    assert total_net_sales.value == 416_161
+    assert not brief.coverage_gaps
+
+
+def test_build_evidence_brief_extracts_docling_flattened_total_net_sales() -> None:
+    result = RetrievalResult(
+        query="What was Apple's total net sales in fiscal 2025?",
+        passages=[
+            RetrievedPassage(
+                chunk_id=uuid4(),
+                source_document_id=uuid4(),
+                company="AAPL",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=31,
+                content=(
+                    "2025, 1 = 2024. 2025, 2 = 2023. 2025, 3 = . "
+                    "iPhone, 1 = $. iPhone, 2 = 209,586. iPhone, 3 = $. iPhone, 4 = 201,183. "
+                    "Total net sales, 1 = $. Total net sales, 2 = 416,161. "
+                    "Total net sales, 3 = $. Total net sales, 4 = 391,035. "
+                    "Total net sales, 5 = $. Total net sales, 6 = 383,285."
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="AAPL"),
+    )
+
+    brief = build_evidence_brief("What was Apple's total net sales in fiscal 2025?", result)
+
+    total_net_sales = next(row for row in brief.rows if row.metric == "Total net sales")
+    assert total_net_sales.filing_year == 2025
+    assert total_net_sales.value == 416_161
+    assert not brief.coverage_gaps
+
+
+def test_build_evidence_brief_flags_missing_requested_total_net_sales_metric() -> None:
+    result = RetrievalResult(
+        query="What was Apple's total net sales in fiscal 2025?",
+        passages=[
+            RetrievedPassage(
+                chunk_id=uuid4(),
+                source_document_id=uuid4(),
+                company="AAPL",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=2,
+                content="During 2025, direct and indirect distribution channels accounted for 40% and 60%.",
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="AAPL"),
+    )
+
+    brief = build_evidence_brief("What was Apple's total net sales in fiscal 2025?", result)
+
+    assert ("segment_or_product", "total net sales") in {(gap.dimension, gap.value) for gap in brief.coverage_gaps}
+
+
 def test_build_evidence_brief_flags_missing_requested_years() -> None:
     result = make_result(
         """

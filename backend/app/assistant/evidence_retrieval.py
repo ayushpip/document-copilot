@@ -18,7 +18,7 @@ from app.retrieval.queries import fetch_neighbor_chunks, full_text_search
 from app.retrieval.schemas import SearchHit
 
 
-FINANCIAL_TERMS = ("revenue", "operating income", "net sales")
+FINANCIAL_TERMS = ("total net sales", "net sales", "total revenue", "revenue", "operating income")
 DEFAULT_RECOVERY_QUERIES = (
     "Intelligent Cloud Revenue Cost of revenue Operating expenses Operating Income",
     "segment revenue operating income",
@@ -45,6 +45,8 @@ def build_targeted_evidence_queries(question: str, brief: EvidenceBrief) -> list
     if terms:
         query_parts.extend(terms)
     query_parts.extend(term for term in FINANCIAL_TERMS if term in question.lower())
+    if "total" in question.lower() and "net sales" in question.lower() and "total net sales" not in query_parts:
+        query_parts.insert(0, "total net sales")
     if "operating margin" in question.lower() and "operating income" not in query_parts:
         query_parts.append("operating income")
     if not query_parts:

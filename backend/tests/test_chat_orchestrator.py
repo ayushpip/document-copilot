@@ -153,15 +153,16 @@ def test_run_chat_turn_fails_closed_when_validation_fails(monkeypatch) -> None:
 
 
 def test_run_chat_turn_falls_back_to_verified_evidence_when_model_numbers_fail(monkeypatch) -> None:
+    question = "Microsoft cloud revenue"
     retrieval_result = make_numeric_retrieval_result()
-    evidence_brief = build_evidence_brief("Microsoft cloud revenue", retrieval_result)
+    evidence_brief = build_evidence_brief(question, retrieval_result)
     saved_messages = []
 
     def fake_retrieve_source_passages(*args, **kwargs):
         return retrieval_result
 
     def fake_build_recovered_answer_plan(*args, **kwargs):
-        return retrieval_result, build_answer_plan("Microsoft cloud revenue", retrieval_result)
+        return retrieval_result, build_answer_plan(question, retrieval_result)
 
     def fake_save_message(db, thread, role, content):
         message = SimpleNamespace(id=uuid4(), role=role, content=content)
@@ -184,7 +185,7 @@ def test_run_chat_turn_falls_back_to_verified_evidence_when_model_numbers_fail(m
     monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
     monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
 
-    turn = orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
+    turn = orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), question, agent_runner=fake_agent_runner)
 
     assert "Verified evidence summary" in turn.answer.answer
     assert "106,265" not in turn.answer.answer
