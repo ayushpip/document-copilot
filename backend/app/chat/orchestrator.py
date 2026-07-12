@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+import logging
 
+from pydantic_ai.exceptions import ModelHTTPError
 from sqlalchemy.orm import Session
 
 from app.assistant import DocumentAgentDeps, GroundedAnswer, GroundedCitation, run_document_agent, run_document_agent_async
@@ -17,6 +19,7 @@ from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, R
 
 AgentRunner = Callable[[str, DocumentAgentDeps], GroundedAnswer]
 AsyncAgentRunner = Callable[[str, DocumentAgentDeps], Awaitable[GroundedAnswer]]
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -136,6 +139,15 @@ def validate_or_fallback_answer(
         return repaired_fallback
 
 
+def _is_context_length_error(exc: Exception) -> bool:
+    if not isinstance(exc, ModelHTTPError):
+        return False
+    body = exc.body if isinstance(exc.body, dict) else {}
+    code = str(body.get("code", ""))
+    message = str(body.get("message", "")).lower()
+    return code == "context_length_exceeded" or "maximum context length" in message
+
+
 def run_chat_turn(
     db: Session,
     thread: ChatThread,
@@ -161,7 +173,15 @@ def run_chat_turn(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    model_answer = agent_runner(clean_question, deps)
+    try:
+        model_answer = agent_runner(clean_question, deps)
+    except Exception as exc:
+        if not _is_context_length_error(exc):
+            raise
+        logger.warning("Model context limit exceeded; using verified evidence fallback.")
+        model_answer = fallback_grounded_answer(evidence_brief)
+        if model_answer is None:
+            raise
     refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
     evidence_brief = refreshed_answer_plan.evidence_brief
     answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)
@@ -203,7 +223,15 @@ async def run_chat_turn_async(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    model_answer = await agent_runner(clean_question, deps)
+    try:
+        model_answer = await agent_runner(clean_question, deps)
+    except Exception as exc:
+        if not _is_context_length_error(exc):
+            raise
+        logger.warning("Model context limit exceeded; using verified evidence fallback.")
+        model_answer = fallback_grounded_answer(evidence_brief)
+        if model_answer is None:
+            raise
     refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
     evidence_brief = refreshed_answer_plan.evidence_brief
     answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)

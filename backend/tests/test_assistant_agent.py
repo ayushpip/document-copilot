@@ -49,6 +49,39 @@ def test_build_agent_prompt_includes_analysis_guardrails() -> None:
     assert "If the retrieved evidence is incomplete" in prompt
 
 
+def test_build_agent_prompt_bounds_large_passages_and_neighbors() -> None:
+    chunk_id = uuid4()
+    result = RetrievalResult(
+        query="Apple revenue",
+        passages=[
+            RetrievedPassage(
+                chunk_id=chunk_id,
+                source_document_id=uuid4(),
+                company="AAPL",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=18,
+                content="Revenue table " + ("very long content " * 1_000),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+                neighbor_chunks=["Neighbor context " + ("also long " * 1_000)],
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="AAPL"),
+    )
+
+    prompt = build_agent_prompt("What was Apple's revenue?", result)
+
+    assert str(chunk_id) in prompt
+    assert "content_excerpt:" in prompt
+    assert "very long content " * 500 not in prompt
+    assert "also long " * 500 not in prompt
+    assert "[truncated]" in prompt
+
+
 def test_calculate_growth_percentage() -> None:
     result = calculate_growth_percentage(current_value=106_265, previous_value=87_464)
 

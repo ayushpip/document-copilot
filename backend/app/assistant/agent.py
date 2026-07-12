@@ -16,6 +16,11 @@ from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, R
 
 
 INSTRUCTIONS_PATH = Path(__file__).with_name("instructions.md")
+MAX_PROMPT_PASSAGES = 12
+MAX_PROMPT_CONTENT_CHARS = 2_800
+MAX_PROMPT_NEIGHBOR_CHARS = 800
+MAX_TOOL_CONTENT_CHARS = 4_000
+MAX_TOOL_NEIGHBOR_CHARS = 1_200
 
 
 class GroundedCitation(BaseModel):
@@ -56,8 +61,9 @@ def _passage_payload(passage: RetrievedPassage) -> dict:
         "filing_type": passage.filing_type,
         "filing_url": passage.filing_url,
         "chunk_index": passage.chunk_index,
-        "content": passage.content,
-        "neighbor_chunks": passage.neighbor_chunks,
+        "content": _truncate_text(passage.content, MAX_TOOL_CONTENT_CHARS),
+        "content_truncated": len(passage.content) > MAX_TOOL_CONTENT_CHARS,
+        "neighbor_chunks": [_truncate_text(chunk, MAX_TOOL_NEIGHBOR_CHARS) for chunk in passage.neighbor_chunks],
     }
 
 
@@ -68,6 +74,15 @@ def _merge_retrieved_passages(deps: DocumentAgentDeps, passages: list[RetrievedP
 
 def _load_instructions() -> str:
     return INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    """Keep model context bounded while preserving readable evidence excerpts."""
+
+    clean_text = " ".join(text.split())
+    if len(clean_text) <= max_chars:
+        return clean_text
+    return clean_text[: max_chars - 20].rstrip() + " ... [truncated]"
 
 
 def search_filings(
@@ -100,7 +115,7 @@ def read_surrounding_chunks(ctx: RunContext[DocumentAgentDeps], chunk_id: UUID) 
     """Read neighboring chunk text for one of the retrieved evidence chunks."""
 
     passage = ctx.deps.allowed_passages.get(chunk_id)
-    return passage.neighbor_chunks if passage else []
+    return [_truncate_text(chunk, MAX_TOOL_NEIGHBOR_CHARS) for chunk in passage.neighbor_chunks] if passage else []
 
 
 def calculate_growth_percentage(current_value: float, previous_value: float) -> dict:
@@ -160,15 +175,24 @@ def build_agent_prompt(question: str, retrieval_result: RetrievalResult) -> str:
     coverage_lines = "\n".join(
         f"- {company} {filing_type} {filing_year}" for company, filing_year, filing_type in evidence_coverage
     )
+    prompt_passages = retrieval_result.passages[:MAX_PROMPT_PASSAGES]
     passages = "\n\n".join(
         (
             f"Passage {passage.rank}\n"
             f"chunk_id: {passage.chunk_id}\n"
             f"source: {passage.company} {passage.filing_type} {passage.filing_year}, chunk {passage.chunk_index}\n"
-            f"content:\n{passage.content}\n"
-            f"surrounding_context:\n{chr(10).join(passage.neighbor_chunks) or 'No surrounding context.'}"
+            f"content_excerpt:\n{_truncate_text(passage.content, MAX_PROMPT_CONTENT_CHARS)}\n"
+            "surrounding_context:\n"
+            f"{chr(10).join(_truncate_text(chunk, MAX_PROMPT_NEIGHBOR_CHARS) for chunk in passage.neighbor_chunks) or 'No surrounding context.'}"
         )
-        for passage in retrieval_result.passages
+        for passage in prompt_passages
+    )
+    omitted_count = max(0, len(retrieval_result.passages) - len(prompt_passages))
+    omitted_note = (
+        f"\n\n{omitted_count} lower-ranked retrieved passages were omitted from this model prompt to keep context bounded. "
+        "Use search_filings for targeted follow-up evidence if needed."
+        if omitted_count
+        else ""
     )
     return (
         f"Question:\n{question.strip()}\n\n"
@@ -187,7 +211,8 @@ def build_agent_prompt(question: str, retrieval_result: RetrievalResult) -> str:
         "- If the retrieved evidence is incomplete for a requested period/category, say what is missing instead of "
         "guessing.\n\n"
         "Retrieved evidence passages:\n"
-        f"{passages or 'No passages retrieved.'}\n\n"
+        f"{passages or 'No passages retrieved.'}"
+        f"{omitted_note}\n\n"
         "Answer using only this evidence. Return the structured GroundedAnswer output."
     )
 
