@@ -36,6 +36,21 @@ const RUN_STAGES = [
   'Validating citations...',
 ]
 
+function useIsNarrowViewport() {
+  const [isNarrow, setIsNarrow] = useState(false)
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 1024px)')
+    const syncViewport = () => setIsNarrow(mediaQuery.matches)
+
+    syncViewport()
+    mediaQuery.addEventListener('change', syncViewport)
+    return () => mediaQuery.removeEventListener('change', syncViewport)
+  }, [])
+
+  return isNarrow
+}
+
 function toDisplayMessages(messages: { id: string; role: DisplayMessage['role']; content: string; citations?: ChatCitation[] }[]) {
   return messages.map((message) => ({
     id: message.id,
@@ -74,6 +89,7 @@ export function ChatPage() {
   const [selectedCitation, setSelectedCitation] = useState<ChatCitation | null>(null)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(false)
+  const isNarrowViewport = useIsNarrowViewport()
   const activeSendThreadIdRef = useRef<string | null>(null)
   const isBusy = status.state === 'loading' || status.state === 'streaming'
 
@@ -281,6 +297,7 @@ export function ChatPage() {
     <ChatWorkspaceShell
       isSidebarCollapsed={isSidebarCollapsed}
       isSourcePanelOpen={isSourcePanelOpen}
+      isNarrowViewport={isNarrowViewport}
       sidebar={
         <ThreadSidebar
           threads={threads}

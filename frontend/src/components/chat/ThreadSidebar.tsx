@@ -1,7 +1,28 @@
 import { LogOut, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, RefreshCw, Trash2, UserCircle } from 'lucide-react'
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ChatThread } from '@/lib/chat-api'
 
 type ThreadSidebarProps = {
@@ -31,24 +52,38 @@ export function ThreadSidebar({
   onDeleteThread,
   onSignOut,
 }: ThreadSidebarProps) {
+  function iconButton(label: string, children: ReactNode, onClick: () => void, disabled = false) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button variant="ghost" size="icon-sm" onClick={onClick} disabled={disabled} aria-label={label}>
+            {children}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="right">{label}</TooltipContent>
+      </Tooltip>
+    )
+  }
+
   return (
     <aside className="flex min-h-0 flex-col border-r border-border bg-muted/25">
       <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-3">
         <div className="flex min-w-0 items-center gap-2 text-sm font-semibold">
-          <Button variant="ghost" size="icon-sm" onClick={onToggleCollapsed} aria-label={isCollapsed ? 'Open sidebar' : 'Collapse sidebar'}>
-            {isCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />}
-          </Button>
+          {iconButton(isCollapsed ? 'Open sidebar' : 'Collapse sidebar', isCollapsed ? <PanelLeftOpen /> : <PanelLeftClose />, onToggleCollapsed)}
           {!isCollapsed ? <span className="truncate">Document Copilot</span> : null}
         </div>
         <div className="flex items-center gap-1">
           {!isCollapsed ? (
-            <Button variant="ghost" size="icon-sm" onClick={onRefresh} disabled={isBusy} aria-label="Refresh threads">
-              <RefreshCw />
-            </Button>
+            iconButton('Refresh threads', <RefreshCw />, onRefresh, isBusy)
           ) : null}
-          <Button variant="default" size="icon-sm" onClick={onNewThread} disabled={isBusy} aria-label="New chat" title="New chat">
-            <MessageSquarePlus />
-          </Button>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="default" size="icon-sm" onClick={onNewThread} disabled={isBusy} aria-label="New chat">
+                <MessageSquarePlus />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right">New chat</TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -93,16 +128,38 @@ export function ThreadSidebar({
                 )}
               </Link>
               {!isCollapsed ? (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="mr-1 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
-                  disabled={isBusy}
-                  onClick={() => onDeleteThread(thread.id)}
-                  aria-label={`Delete ${thread.title ?? 'chat'}`}
-                >
-                  <Trash2 />
-                </Button>
+                <AlertDialog>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <AlertDialogTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="mr-1 opacity-0 transition group-hover:opacity-100 focus:opacity-100"
+                          disabled={isBusy}
+                          aria-label={`Delete ${thread.title ?? 'chat'}`}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </AlertDialogTrigger>
+                    </TooltipTrigger>
+                    <TooltipContent>Delete chat</TooltipContent>
+                  </Tooltip>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete this conversation?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This removes the conversation from your chat history. This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction variant="destructive" onClick={() => onDeleteThread(thread.id)}>
+                        Delete
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               ) : null}
             </div>
           ))}
@@ -123,14 +180,27 @@ export function ThreadSidebar({
         ) : null}
         <div className={isCollapsed ? 'grid gap-1' : 'flex items-center gap-1'}>
           {isCollapsed ? (
-            <Button variant="ghost" size="icon-sm" onClick={onRefresh} disabled={isBusy} aria-label="Refresh threads" title="Refresh threads">
-            <RefreshCw />
-            </Button>
+            iconButton('Refresh threads', <RefreshCw />, onRefresh, isBusy)
           ) : null}
-          <Button variant="outline" className={isCollapsed ? '' : 'w-full justify-start'} onClick={onSignOut} aria-label="Sign out" title="Sign out">
-            <LogOut />
-            {!isCollapsed ? <span>Sign out</span> : null}
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className={isCollapsed ? '' : 'w-full justify-start'} aria-label="Open account menu">
+                <UserCircle />
+                {!isCollapsed ? <span>Account</span> : null}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" side={isCollapsed ? 'right' : 'top'} className="w-56">
+              <DropdownMenuLabel>
+                <span className="block text-xs text-muted-foreground">Signed in as</span>
+                <span className="block truncate text-sm text-foreground">{userEmail ?? 'Analyst'}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem variant="destructive" onSelect={onSignOut}>
+                <LogOut />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </aside>

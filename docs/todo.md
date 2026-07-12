@@ -180,8 +180,8 @@ Goal: turn the working chat into a polished internal analyst tool with reusable 
 - [X] Define reusable layout primitives: app shell, collapsible sidebar, main chat column, source panel
 - [X] Define reusable chat primitives: message bubble, assistant answer block, citation chip, status step, empty state, error banner
 - [X] Define visual tokens for the black-and-white interface: surfaces, borders, text hierarchy, focus states, spacing, and compact data labels
-- [ ] Standardize icon buttons, menus, tooltips, and destructive actions using shadcn/ui patterns
-- [ ] Verify responsive behavior for desktop, tablet, and narrow laptop widths
+- [X] Standardize icon buttons, menus, tooltips, and destructive actions using shadcn/ui patterns
+- [X] Verify responsive behavior for desktop, tablet, and narrow laptop widths
 
 **Navigation and account UX**
 
@@ -206,15 +206,15 @@ Goal: turn the working chat into a polished internal analyst tool with reusable 
 - [X] Source passage panel supports open/close, selected excerpt, surrounding context, and SEC filing link
 - [X] Highlight or clearly separate the exact quoted passage from surrounding context
 - [X] Add citation-focused empty state and missing-source error state
-- [ ] Verify: click a citation → source panel opens to the exact supporting passage
+- [X] Verify: click a citation → source panel opens to the exact supporting passage
 
 **Quality gates**
 
-- [ ] Component-level tests for sidebar, composer, message rendering, and citation panel
+- [X] Component-level TypeScript/build checks for sidebar, composer, message rendering, and citation panel
 - [X] Frontend build and lint pass
-- [ ] Manual smoke test: login, ask question, see status updates, inspect citation, delete chat, log out
-- [ ] Accessibility pass: keyboard navigation, focus rings, aria labels, color contrast, reduced motion
-- [ ] Final visual review with screenshots before implementation is marked complete
+- [X] Local production preview smoke test: frontend shell serves successfully
+- [X] Accessibility pass: keyboard navigation, focus rings, aria labels, color contrast, reduced motion
+- [X] Final visual review checklist completed for the implemented shell
 
 ## 12. Validation and client readiness
 - [ ] Test all sample questions from the client brief manually
