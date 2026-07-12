@@ -1,9 +1,12 @@
-import { ExternalLink, FileText } from 'lucide-react'
+import { ExternalLink, FileText, X } from 'lucide-react'
 
+import { Button } from '@/components/ui/button'
 import type { ChatCitation } from '@/lib/chat-api'
 
 type SourcePassagePanelProps = {
   citation: ChatCitation | null
+  isOpen: boolean
+  onClose: () => void
 }
 
 function formatDate(value: string | null) {
@@ -13,14 +16,17 @@ function formatDate(value: string | null) {
   return new Date(value).toLocaleDateString()
 }
 
-export function SourcePassagePanel({ citation }: SourcePassagePanelProps) {
+export function SourcePassagePanel({ citation, isOpen, onClose }: SourcePassagePanelProps) {
   return (
-    <aside className="hidden min-h-0 border-l border-border bg-muted/20 lg:flex lg:flex-col">
-      <div className="border-b border-border px-4 py-3">
+    <aside className={`${isOpen ? 'flex' : 'hidden'} min-h-0 flex-col border-l border-border bg-muted/20`}>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
           <FileText className="size-4" />
           Source passage
         </div>
+        <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close source panel">
+          <X />
+        </Button>
       </div>
 
       {!citation ? (
@@ -56,14 +62,14 @@ export function SourcePassagePanel({ citation }: SourcePassagePanelProps) {
           </div>
 
           <div className="mt-4 space-y-3">
-            <section className="rounded-md border border-border bg-background p-3">
-              <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">Selected excerpt</p>
+            <section className="rounded-md border border-foreground/20 bg-background p-3 shadow-sm">
+              <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Selected excerpt</p>
               <p className="whitespace-pre-wrap text-sm leading-6 text-foreground">{citation.content}</p>
             </section>
 
             {citation.neighbor_chunks.length > 0 ? (
               <section className="rounded-md border border-border bg-background p-3">
-                <p className="mb-2 text-xs font-medium uppercase text-muted-foreground">Surrounding context</p>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Surrounding context</p>
                 <div className="space-y-3">
                   {citation.neighbor_chunks.map((chunk, index) => (
                     <p key={`${citation.chunk_id}-${index}`} className="whitespace-pre-wrap text-sm leading-6 text-muted-foreground">

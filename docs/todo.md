@@ -177,41 +177,41 @@ Goal: turn the working chat into a polished internal analyst tool with reusable 
 
 **Design system foundation**
 
-- [ ] Define reusable layout primitives: app shell, collapsible sidebar, main chat column, source panel
-- [ ] Define reusable chat primitives: message bubble, assistant answer block, citation chip, status step, empty state, error banner
-- [ ] Define visual tokens for the black-and-white interface: surfaces, borders, text hierarchy, focus states, spacing, and compact data labels
+- [X] Define reusable layout primitives: app shell, collapsible sidebar, main chat column, source panel
+- [X] Define reusable chat primitives: message bubble, assistant answer block, citation chip, status step, empty state, error banner
+- [X] Define visual tokens for the black-and-white interface: surfaces, borders, text hierarchy, focus states, spacing, and compact data labels
 - [ ] Standardize icon buttons, menus, tooltips, and destructive actions using shadcn/ui patterns
 - [ ] Verify responsive behavior for desktop, tablet, and narrow laptop widths
 
 **Navigation and account UX**
 
-- [ ] Collapsible thread sidebar with open/closed states and keyboard-accessible toggle
-- [ ] Conversation list with active state, loading skeleton, empty state, refresh, delete, and new chat action
-- [ ] User/account area pinned to the bottom of the sidebar
-- [ ] Logout action in user/account menu
-- [ ] Preserve current thread state when navigating, deleting, refreshing, or collapsing the sidebar
+- [X] Collapsible thread sidebar with open/closed states and keyboard-accessible toggle
+- [X] Conversation list with active state, loading skeleton, empty state, refresh, delete, and new chat action
+- [X] User/account area pinned to the bottom of the sidebar
+- [X] Logout action in user/account menu
+- [X] Preserve current thread state when navigating, deleting, refreshing, or collapsing the sidebar
 
 **Chat interaction**
 
-- [ ] Replace basic message rendering with polished user and assistant message components
-- [ ] Render assistant answers with readable markdown-style structure for headings, bullets, tables, and evidence summaries
-- [ ] Add waiting/status timeline for retrieval, ranking, evidence extraction, drafting, validation, and saving
-- [ ] Improve composer ergonomics: autosize textarea, Enter-to-send, Shift+Enter newline, disabled/sending states
-- [ ] Add useful starter prompts for empty chats based on the client brief
-- [ ] Preserve prompt text on errors and prevent duplicate/ghost messages
+- [X] Replace basic message rendering with polished user and assistant message components
+- [X] Render assistant answers with readable markdown-style structure for headings, bullets, tables, and evidence summaries
+- [X] Add waiting/status timeline for retrieval, ranking, evidence extraction, drafting, validation, and saving
+- [X] Improve composer ergonomics: autosize textarea, Enter-to-send, Shift+Enter newline, disabled/sending states
+- [X] Add useful starter prompts for empty chats based on the client brief
+- [X] Preserve prompt text on errors and prevent duplicate/ghost messages
 
 **Citations and source review**
 
-- [ ] Citation chips show company, filing type, filing year, section/page/chunk, and selected state
-- [ ] Source passage panel supports open/close, selected excerpt, surrounding context, and SEC filing link
-- [ ] Highlight or clearly separate the exact quoted passage from surrounding context
-- [ ] Add citation-focused empty state and missing-source error state
+- [X] Citation chips show company, filing type, filing year, section/page/chunk, and selected state
+- [X] Source passage panel supports open/close, selected excerpt, surrounding context, and SEC filing link
+- [X] Highlight or clearly separate the exact quoted passage from surrounding context
+- [X] Add citation-focused empty state and missing-source error state
 - [ ] Verify: click a citation → source panel opens to the exact supporting passage
 
 **Quality gates**
 
 - [ ] Component-level tests for sidebar, composer, message rendering, and citation panel
-- [ ] Frontend build and lint pass
+- [X] Frontend build and lint pass
 - [ ] Manual smoke test: login, ask question, see status updates, inspect citation, delete chat, log out
 - [ ] Accessibility pass: keyboard navigation, focus rings, aria labels, color contrast, reduced motion
 - [ ] Final visual review with screenshots before implementation is marked complete

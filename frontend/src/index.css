@@ -18,6 +18,18 @@
   --shadow:
     rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
 
+  --surface-page: #ffffff;
+  --surface-panel: #fafafa;
+  --surface-raised: #ffffff;
+  --surface-inset: #f5f5f5;
+  --line-subtle: #e5e5e5;
+  --line-strong: #0a0a0a;
+  --text-strong: #0a0a0a;
+  --text-soft: #737373;
+  --focus-ring: #525252;
+  --space-chat-x: 1.5rem;
+  --space-chat-y: 1.5rem;
+
   --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
   --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
   --mono: ui-monospace, Consolas, monospace;
@@ -110,6 +122,15 @@
     --social-bg: rgba(47, 48, 58, 0.5);
     --shadow:
       rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+    --surface-page: #0a0a0a;
+    --surface-panel: #171717;
+    --surface-raised: #1f1f1f;
+    --surface-inset: #121212;
+    --line-subtle: #2f2f2f;
+    --line-strong: #f5f5f5;
+    --text-strong: #f5f5f5;
+    --text-soft: #a3a3a3;
+    --focus-ring: #d4d4d4;
   }
 
   #social .button-icon {
@@ -206,6 +227,14 @@ code {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  --color-surface-page: var(--surface-page);
+  --color-surface-panel: var(--surface-panel);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-inset: var(--surface-inset);
+  --color-line-subtle: var(--line-subtle);
+  --color-line-strong: var(--line-strong);
+  --color-text-strong: var(--text-strong);
+  --color-text-soft: var(--text-soft);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

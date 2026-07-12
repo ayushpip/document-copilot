@@ -1,5 +1,8 @@
 import { FileText } from 'lucide-react'
 
+import { AssistantAnswer } from '@/components/chat/AssistantAnswer'
+import { ChatEmptyState } from '@/components/chat/ChatEmptyState'
+import { RunStatusTimeline } from '@/components/chat/RunStatusTimeline'
 import type { ChatCitation, ChatMessageRole } from '@/lib/chat-api'
 
 export type DisplayMessage = {
@@ -13,8 +16,11 @@ type MessageListProps = {
   messages: DisplayMessage[]
   isStreaming: boolean
   runStage: string | null
+  runStages: string[]
+  isBusy: boolean
   selectedCitation: ChatCitation | null
   onSelectCitation: (citation: ChatCitation) => void
+  onSelectPrompt: (prompt: string) => void
 }
 
 function messageBody(content: string, role: ChatMessageRole) {
@@ -65,33 +71,37 @@ function CitationChips({
   )
 }
 
-export function MessageList({ messages, isStreaming, runStage, selectedCitation, onSelectCitation }: MessageListProps) {
+export function MessageList({
+  messages,
+  isStreaming,
+  runStage,
+  runStages,
+  isBusy,
+  selectedCitation,
+  onSelectCitation,
+  onSelectPrompt,
+}: MessageListProps) {
   if (messages.length === 0) {
-    return (
-      <div className="grid min-h-full place-items-center px-6 py-12 text-center">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-normal text-foreground">Start a filing question</h1>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">
-            Ask about a company, filing year, risk factor, revenue segment, or capex trend.
-          </p>
-        </div>
-      </div>
-    )
+    return <ChatEmptyState disabled={isBusy} onSelectPrompt={onSelectPrompt} />
   }
 
   return (
-    <div className="space-y-4 px-6 py-6">
+    <div className="mx-auto max-w-4xl space-y-5 px-4 py-6 sm:px-6">
       {messages.map((message) => (
         <article
           key={message.id}
-          className={`max-w-3xl rounded-lg border px-4 py-3 text-sm leading-6 ${
+          className={`rounded-lg border px-4 py-3 text-sm leading-6 shadow-sm ${
             message.role === 'user'
-              ? 'ml-auto border-primary/20 bg-primary text-primary-foreground'
-              : 'border-border bg-card text-card-foreground'
+              ? 'ml-auto max-w-2xl border-primary bg-primary text-primary-foreground'
+              : 'max-w-3xl border-border bg-card text-card-foreground'
           }`}
         >
-          <p className="mb-1 text-xs font-medium uppercase text-current opacity-70">{message.role}</p>
-          <p className="whitespace-pre-wrap">{messageBody(message.content, message.role)}</p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-current opacity-60">{message.role}</p>
+          {message.role === 'assistant' ? (
+            <AssistantAnswer content={messageBody(message.content, message.role)} />
+          ) : (
+            <p className="whitespace-pre-wrap">{message.content}</p>
+          )}
           {message.role === 'assistant' ? (
             <CitationChips
               citations={message.citations ?? []}
@@ -101,7 +111,7 @@ export function MessageList({ messages, isStreaming, runStage, selectedCitation,
           ) : null}
         </article>
       ))}
-      {isStreaming ? <p className="px-1 text-sm text-muted-foreground">{runStage ?? 'Assistant is working...'}</p> : null}
+      {isStreaming ? <RunStatusTimeline stages={runStages} activeStage={runStage} /> : null}
     </div>
   )
 }

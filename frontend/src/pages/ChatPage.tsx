@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { LogOut } from 'lucide-react'
+import { FileText } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 
+import { ChatErrorBanner } from '@/components/chat/ChatErrorBanner'
+import { ChatWorkspaceShell } from '@/components/chat/ChatWorkspaceShell'
 import { MessageComposer } from '@/components/chat/MessageComposer'
 import { MessageList, type DisplayMessage } from '@/components/chat/MessageList'
 import { SourcePassagePanel } from '@/components/chat/SourcePassagePanel'
@@ -70,6 +72,8 @@ export function ChatPage() {
   const [status, setStatus] = useState<ChatStatus>({ state: 'idle' })
   const [runStage, setRunStage] = useState<string | null>(null)
   const [selectedCitation, setSelectedCitation] = useState<ChatCitation | null>(null)
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
+  const [isSourcePanelOpen, setIsSourcePanelOpen] = useState(false)
   const activeSendThreadIdRef = useRef<string | null>(null)
   const isBusy = status.state === 'loading' || status.state === 'streaming'
 
@@ -103,6 +107,7 @@ export function ChatPage() {
     if (deletedThreadId === threadId) {
       setMessages([])
       setSelectedCitation(null)
+      setIsSourcePanelOpen(false)
       setStatus({ state: 'idle' })
       navigate(remainingThreads[0] ? `/chat/${remainingThreads[0].id}` : '/chat', { replace: true })
     }
@@ -142,6 +147,7 @@ export function ChatPage() {
         setMessages([])
         setStatus({ state: 'idle' })
         setSelectedCitation(null)
+        setIsSourcePanelOpen(false)
       })
       return
     }
@@ -163,6 +169,7 @@ export function ChatPage() {
           setMessages(toDisplayMessages(history))
           setStatus({ state: 'idle' })
           setSelectedCitation(null)
+          setIsSourcePanelOpen(false)
         }
       })
       .catch((error: unknown) => {
@@ -229,6 +236,7 @@ export function ChatPage() {
         .map((message) => ({ role: message.role, content: message.content }))
       setMessages(nextMessages)
       setSelectedCitation(null)
+      setIsSourcePanelOpen(false)
 
       await streamChat(activeThread.id, streamMessages, (chunk) => {
         if (!hasReceivedText) {
@@ -270,34 +278,47 @@ export function ChatPage() {
   }
 
   return (
-    <main className="grid h-svh grid-cols-[280px_minmax(0,1fr)_360px] bg-background text-foreground">
-      <ThreadSidebar
-        threads={threads}
-        activeThreadId={threadId}
-        isLoading={isLoadingThreads}
-        isBusy={isBusy}
-        onNewThread={() => void handleNewThread()}
-        onRefresh={() => void refreshThreads()}
-        onDeleteThread={(deletedThreadId) => void handleDeleteThread(deletedThreadId)}
-      />
-
+    <ChatWorkspaceShell
+      isSidebarCollapsed={isSidebarCollapsed}
+      isSourcePanelOpen={isSourcePanelOpen}
+      sidebar={
+        <ThreadSidebar
+          threads={threads}
+          activeThreadId={threadId}
+          isLoading={isLoadingThreads}
+          isBusy={isBusy}
+          isCollapsed={isSidebarCollapsed}
+          userEmail={user?.email ?? null}
+          onToggleCollapsed={() => setIsSidebarCollapsed((current) => !current)}
+          onNewThread={() => void handleNewThread()}
+          onRefresh={() => void refreshThreads()}
+          onDeleteThread={(deletedThreadId) => void handleDeleteThread(deletedThreadId)}
+          onSignOut={() => void signOut()}
+        />
+      }
+      sourcePanel={
+        <SourcePassagePanel citation={selectedCitation} isOpen={isSourcePanelOpen} onClose={() => setIsSourcePanelOpen(false)} />
+      }
+    >
       <section className="flex min-w-0 flex-col">
         <header className="flex h-14 items-center justify-between border-b border-border px-5">
           <div className="min-w-0 text-left">
             <p className="truncate text-sm font-semibold">Document Copilot</p>
-            <p className="truncate text-xs text-muted-foreground">{user?.email ?? 'Signed in analyst'}</p>
+            <p className="truncate text-xs text-muted-foreground">Internal analyst workspace</p>
           </div>
-          <Button variant="outline" onClick={() => void signOut()}>
-            <LogOut />
-            Sign out
-          </Button>
+          {selectedCitation ? (
+            <Button variant="outline" onClick={() => setIsSourcePanelOpen((current) => !current)}>
+              <FileText />
+              Sources
+            </Button>
+          ) : null}
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
           {status.state === 'forbidden' ? (
             <div className="grid min-h-full place-items-center px-6 text-center">
               <div>
-                <h1 className="text-2xl font-semibold tracking-normal text-foreground">Access denied</h1>
+                <h1 className="!m-0 !text-2xl font-semibold tracking-normal text-foreground">Access denied</h1>
                 <p className="mt-3 text-sm text-muted-foreground">This thread belongs to another user.</p>
               </div>
             </div>
@@ -307,20 +328,22 @@ export function ChatPage() {
               messages={messages}
               isStreaming={status.state === 'streaming'}
               runStage={runStage}
+              runStages={RUN_STAGES}
+              isBusy={isBusy}
               selectedCitation={selectedCitation}
-              onSelectCitation={setSelectedCitation}
+              onSelectCitation={(citation) => {
+                setSelectedCitation(citation)
+                setIsSourcePanelOpen(true)
+              }}
+              onSelectPrompt={(prompt) => void handleSend(prompt)}
             />
           ) : null}
         </div>
 
-        {status.state === 'error' ? (
-          <p className="border-t border-border px-4 py-2 text-sm text-destructive">{status.message}</p>
-        ) : null}
+        {status.state === 'error' ? <ChatErrorBanner message={status.message} /> : null}
 
         <MessageComposer disabled={isBusy} onSubmit={handleSend} />
       </section>
-
-      <SourcePassagePanel citation={selectedCitation} />
-    </main>
+    </ChatWorkspaceShell>
   )
 }
