@@ -70,6 +70,37 @@ def _format_calculation_value(value: float, unit: str) -> str:
     return f"{value:g}{separator}{unit}"
 
 
+def _format_money_row(value: float, unit: str) -> str:
+    if unit == "USD millions":
+        return f"${value / 1000:,.3f} billion (${value:,.0f} million)"
+    return _format_calculation_value(value, unit)
+
+
+def deterministic_grounded_answer(evidence_brief: EvidenceBrief) -> GroundedAnswer | None:
+    """Answer simple single-fact numeric questions without a final LLM call."""
+
+    if len(evidence_brief.rows) != 1 or evidence_brief.coverage_gaps or evidence_brief.conflicts:
+        return None
+    if evidence_brief.calculations:
+        return None
+
+    row = evidence_brief.rows[0]
+    answer = (
+        f"{row.company}'s {row.metric.lower()} in fiscal {row.filing_year} was "
+        f"{_format_money_row(row.value, row.unit)}."
+    )
+    return GroundedAnswer(
+        answer=answer,
+        citations=[
+            GroundedCitation(
+                chunk_id=row.source_chunk_id,
+                claim=f"{row.company} {row.metric} was {row.value:g} {row.unit} in {row.filing_year}.",
+                supporting_quote=row.quote,
+            )
+        ],
+    )
+
+
 def fallback_grounded_answer(evidence_brief: EvidenceBrief) -> GroundedAnswer | None:
     """Build a conservative answer from verified evidence if the model output fails validation."""
 
@@ -124,6 +155,15 @@ def validate_or_fallback_answer(
     retrieval_result: RetrievalResult,
     evidence_brief: EvidenceBrief,
 ) -> GroundedAnswer:
+    if answer.not_enough_evidence and evidence_brief.rows and not evidence_brief.coverage_gaps:
+        fallback_answer = fallback_grounded_answer(evidence_brief)
+        if fallback_answer is None:
+            raise GroundingValidationError("Model claimed not enough evidence despite verified evidence rows.")
+        repaired_fallback = repair_grounded_answer(fallback_answer, retrieval_result)
+        validate_grounded_answer(repaired_fallback, retrieval_result)
+        validate_numeric_claims(repaired_fallback.answer, evidence_brief)
+        return repaired_fallback
+
     try:
         repaired_answer = repair_grounded_answer(answer, retrieval_result)
         validate_grounded_answer(repaired_answer, retrieval_result)
@@ -173,15 +213,17 @@ def run_chat_turn(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    try:
-        model_answer = agent_runner(clean_question, deps)
-    except Exception as exc:
-        if not _is_context_length_error(exc):
-            raise
-        logger.warning("Model context limit exceeded; using verified evidence fallback.")
-        model_answer = fallback_grounded_answer(evidence_brief)
-        if model_answer is None:
-            raise
+    model_answer = deterministic_grounded_answer(evidence_brief)
+    if model_answer is None:
+        try:
+            model_answer = agent_runner(clean_question, deps)
+        except Exception as exc:
+            if not _is_context_length_error(exc):
+                raise
+            logger.warning("Model context limit exceeded; using verified evidence fallback.")
+            model_answer = fallback_grounded_answer(evidence_brief)
+            if model_answer is None:
+                raise
     refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
     evidence_brief = refreshed_answer_plan.evidence_brief
     answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)
@@ -223,15 +265,17 @@ async def run_chat_turn_async(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
-    try:
-        model_answer = await agent_runner(clean_question, deps)
-    except Exception as exc:
-        if not _is_context_length_error(exc):
-            raise
-        logger.warning("Model context limit exceeded; using verified evidence fallback.")
-        model_answer = fallback_grounded_answer(evidence_brief)
-        if model_answer is None:
-            raise
+    model_answer = deterministic_grounded_answer(evidence_brief)
+    if model_answer is None:
+        try:
+            model_answer = await agent_runner(clean_question, deps)
+        except Exception as exc:
+            if not _is_context_length_error(exc):
+                raise
+            logger.warning("Model context limit exceeded; using verified evidence fallback.")
+            model_answer = fallback_grounded_answer(evidence_brief)
+            if model_answer is None:
+                raise
     refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
     evidence_brief = refreshed_answer_plan.evidence_brief
     answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)

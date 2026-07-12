@@ -73,6 +73,35 @@ def make_numeric_retrieval_result(chunk_id=None) -> RetrievalResult:
     )
 
 
+def make_apple_total_net_sales_result(chunk_id=None) -> RetrievalResult:
+    chunk_id = chunk_id or uuid4()
+    return RetrievalResult(
+        query="What was Apple's total net sales in fiscal 2025?",
+        passages=[
+            RetrievedPassage(
+                chunk_id=chunk_id,
+                source_document_id=uuid4(),
+                company="AAPL",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=31,
+                content=(
+                    "2025, 1 = 2024. 2025, 2 = 2023. 2025, 3 = . "
+                    "Total net sales, 1 = $. Total net sales, 2 = 416,161. "
+                    "Total net sales, 3 = $. Total net sales, 4 = 391,035. "
+                    "Total net sales, 5 = $. Total net sales, 6 = 383,285."
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="AAPL", filing_year=2025, filing_type="10-K"),
+    )
+
+
 def test_format_answer_text_appends_citations() -> None:
     chunk_id = uuid4()
     retrieval_result = make_retrieval_result(chunk_id)
@@ -152,6 +181,38 @@ def test_run_chat_turn_fails_closed_when_validation_fails(monkeypatch) -> None:
     assert [message.role for message in saved_messages] == ["user"]
 
 
+def test_run_chat_turn_answers_single_fact_without_final_agent(monkeypatch) -> None:
+    question = "What was Apple's total net sales in fiscal 2025?"
+    retrieval_result = make_apple_total_net_sales_result()
+    saved_messages = []
+
+    def fake_retrieve_source_passages(*args, **kwargs):
+        return retrieval_result
+
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return retrieval_result, build_answer_plan(question, retrieval_result)
+
+    def fake_save_message(db, thread, role, content):
+        message = SimpleNamespace(id=uuid4(), role=role, content=content)
+        saved_messages.append(message)
+        return message
+
+    def agent_should_not_run(question, deps):
+        raise AssertionError("simple verified evidence answers should not call the final agent")
+
+    monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
+    monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
+
+    turn = orchestrator.run_chat_turn(FakeDb(), SimpleNamespace(), question, agent_runner=agent_should_not_run)
+
+    assert "total net sales" in turn.answer.answer
+    assert "$416.161 billion" in turn.answer.answer
+    assert "$416,161 million" in turn.answer.answer
+    assert turn.answer.citations
+    assert [message.role for message in saved_messages] == ["user", "assistant"]
+
+
 def test_run_chat_turn_falls_back_to_verified_evidence_when_model_numbers_fail(monkeypatch) -> None:
     question = "Microsoft cloud revenue"
     retrieval_result = make_numeric_retrieval_result()
@@ -192,6 +253,19 @@ def test_run_chat_turn_falls_back_to_verified_evidence_when_model_numbers_fail(m
     assert "106265" in turn.answer.answer
     assert turn.evidence_brief == evidence_brief
     assert [message.role for message in saved_messages] == ["user", "assistant"]
+
+
+def test_validate_or_fallback_rejects_false_not_enough_evidence() -> None:
+    retrieval_result = make_apple_total_net_sales_result()
+    evidence_brief = build_evidence_brief("What was Apple's total net sales in fiscal 2025?", retrieval_result)
+    weak_answer = GroundedAnswer(answer="There is not enough evidence.", not_enough_evidence=True)
+
+    answer = orchestrator.validate_or_fallback_answer(weak_answer, retrieval_result, evidence_brief)
+
+    assert not answer.not_enough_evidence
+    assert "Verified evidence summary" in answer.answer
+    assert "416161" in answer.answer
+    assert answer.citations
 
 
 def test_run_chat_turn_revalidates_after_agent_adds_tool_passages(monkeypatch) -> None:
