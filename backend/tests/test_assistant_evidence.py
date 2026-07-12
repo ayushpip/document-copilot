@@ -398,6 +398,43 @@ def test_build_evidence_brief_does_not_calculate_across_different_source_filings
     assert any("no single source filing" in conflict for conflict in brief.conflicts)
 
 
+def test_build_evidence_brief_filters_to_requested_segment() -> None:
+    result = RetrievalResult(
+        query="Compare Microsoft Intelligent Cloud revenue growth from 2022-2023.",
+        passages=[
+            RetrievedPassage(
+                chunk_id=uuid4(),
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2023,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=22,
+                content=(
+                    "|  | 2023 | 2022 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Intelligent Cloud |  |  |\n"
+                    "| Revenue | 87,907 | 74,965 |\n"
+                    "| Operating Income | 37,884 | 33,203 |\n"
+                    "| More Personal Computing |  |  |\n"
+                    "| Revenue | 54,734 | 59,941 |\n"
+                    "| Operating Income | 16,450 | 20,490 |"
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="MSFT"),
+    )
+
+    brief = build_evidence_brief("Compare Microsoft Intelligent Cloud revenue growth from 2022-2023.", result)
+
+    assert {row.metric for row in brief.rows} == {"Intelligent Cloud Revenue"}
+    assert all("More Personal Computing" not in calculation.label for calculation in brief.calculations)
+
+
 def test_build_evidence_brief_only_keeps_totals_when_question_needs_mix_context() -> None:
     result = make_result(
         """
@@ -484,6 +521,20 @@ def test_validate_numeric_claims_accepts_scaled_absolute_changes() -> None:
         "Revenue increased by about $18.8 billion and operating income increased by about $6.8 billion.",
         brief,
     )
+
+
+def test_validate_numeric_claims_accepts_negative_calculations() -> None:
+    result = make_result(
+        """
+|  | 2023 | 2022 |
+| --- | --- | --- |
+| More Personal Computing |  |  |
+| Revenue | 54,734 | 59,941 |
+"""
+    )
+    brief = build_evidence_brief("Compare Microsoft More Personal Computing revenue growth from 2022-2023.", result)
+
+    validate_numeric_claims("Revenue growth was -8.7%.", brief)
 
 
 def test_validate_numeric_claims_rejects_unsupported_values() -> None:

@@ -149,7 +149,10 @@ def _parse_number(value: str) -> float | None:
         return None
 
     number = float(match.group(1).replace(",", ""))
-    if value.strip().startswith("(") and value.strip().endswith(")"):
+    stripped_value = value.strip()
+    if stripped_value.startswith("-"):
+        return -number
+    if stripped_value.startswith("(") and stripped_value.endswith(")"):
         return -number
     return number
 
@@ -517,6 +520,8 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
     terms = requested_terms(question)
     lower_question = question.lower()
     include_total_rows = any(term in lower_question for term in ("mix", "share", "total", "percentage of", "proportion"))
+    segment_terms = terms & KNOWN_SEGMENTS_AND_PRODUCTS
+    metric_terms = terms & KNOWN_FINANCIAL_METRICS
     exact_total_metric_terms = {
         term
         for term in ("total net sales", "total revenue")
@@ -537,6 +542,23 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
             )
             or (
                 not exact_total_metric_terms
+                and segment_terms
+                and any(term in row.metric.lower() for term in segment_terms)
+                and (
+                    not metric_terms
+                    or any(term in row.metric.lower() for term in metric_terms)
+                    or _canonical_metric(row.metric) in segment_terms
+                )
+            )
+            or (
+                not exact_total_metric_terms
+                and segment_terms
+                and include_total_rows
+                and row.metric.lower() in {"total net sales", "total revenue"}
+            )
+            or (
+                not exact_total_metric_terms
+                and not segment_terms
                 and (
                     any(term in row.metric.lower() for term in terms)
                     or (include_total_rows and row.metric.lower() in {"total net sales", "total revenue"})
