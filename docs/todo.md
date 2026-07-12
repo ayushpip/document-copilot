@@ -147,8 +147,8 @@ Goal: answers are built from a verified evidence table before final prose, so nu
 - [X] Grounding validator upgrade — every numeric claim maps to a structured evidence row or calculation
 - [X] Chat orchestrator update — retrieve → extract evidence → calculate/verify → final agent answer → validate → persist
 - [X] Unit tests: evidence extraction models, coverage checks, calculations, numeric claim validation
-- [ ] Verify: Apple revenue mix answer uses complete 2021-2025 product table
-- [ ] Verify: Microsoft cloud answer distinguishes revenue growth, operating income growth, and operating margin percentage
+- [X] Verify: Apple revenue mix answer uses complete 2021-2025 product table
+- [X] Verify: Microsoft cloud answer distinguishes revenue growth, operating income growth, and operating margin percentage
 
 ## Phase 10A — Reliability and chat UX repair
 
@@ -160,7 +160,7 @@ Goal: the assistant recovers missing evidence before refusing, and the chat inte
 - [X] Targeted query builder — derive company, years, segments/products, and financial metrics from the question
 - [X] Merge recovered passages into the existing retrieval result without duplicate chunks
 - [X] Unit tests: Microsoft Intelligent Cloud 2022-2025 recovery finds revenue and operating income evidence
-- [ ] Verify: Microsoft cloud answer no longer gives false "not enough evidence" when filings contain the segment table
+- [X] Verify: Microsoft cloud answer no longer gives false "not enough evidence" when filings contain the segment table
 
 **Frontend chat UX**
 
@@ -171,7 +171,52 @@ Goal: the assistant recovers missing evidence before refusing, and the chat inte
 - [X] Error state preserves the typed prompt when send fails
 - [X] Unit/build checks for chat API and UI changes
 
-## 11. Validation and client readiness
+## Phase 11 — Frontend integration & analyst UI
+
+Goal: turn the working chat into a polished internal analyst tool with reusable components, clear source verification, stable chat flows, and a disciplined black-and-white visual system.
+
+**Design system foundation**
+
+- [ ] Define reusable layout primitives: app shell, collapsible sidebar, main chat column, source panel
+- [ ] Define reusable chat primitives: message bubble, assistant answer block, citation chip, status step, empty state, error banner
+- [ ] Define visual tokens for the black-and-white interface: surfaces, borders, text hierarchy, focus states, spacing, and compact data labels
+- [ ] Standardize icon buttons, menus, tooltips, and destructive actions using shadcn/ui patterns
+- [ ] Verify responsive behavior for desktop, tablet, and narrow laptop widths
+
+**Navigation and account UX**
+
+- [ ] Collapsible thread sidebar with open/closed states and keyboard-accessible toggle
+- [ ] Conversation list with active state, loading skeleton, empty state, refresh, delete, and new chat action
+- [ ] User/account area pinned to the bottom of the sidebar
+- [ ] Logout action in user/account menu
+- [ ] Preserve current thread state when navigating, deleting, refreshing, or collapsing the sidebar
+
+**Chat interaction**
+
+- [ ] Replace basic message rendering with polished user and assistant message components
+- [ ] Render assistant answers with readable markdown-style structure for headings, bullets, tables, and evidence summaries
+- [ ] Add waiting/status timeline for retrieval, ranking, evidence extraction, drafting, validation, and saving
+- [ ] Improve composer ergonomics: autosize textarea, Enter-to-send, Shift+Enter newline, disabled/sending states
+- [ ] Add useful starter prompts for empty chats based on the client brief
+- [ ] Preserve prompt text on errors and prevent duplicate/ghost messages
+
+**Citations and source review**
+
+- [ ] Citation chips show company, filing type, filing year, section/page/chunk, and selected state
+- [ ] Source passage panel supports open/close, selected excerpt, surrounding context, and SEC filing link
+- [ ] Highlight or clearly separate the exact quoted passage from surrounding context
+- [ ] Add citation-focused empty state and missing-source error state
+- [ ] Verify: click a citation → source panel opens to the exact supporting passage
+
+**Quality gates**
+
+- [ ] Component-level tests for sidebar, composer, message rendering, and citation panel
+- [ ] Frontend build and lint pass
+- [ ] Manual smoke test: login, ask question, see status updates, inspect citation, delete chat, log out
+- [ ] Accessibility pass: keyboard navigation, focus rings, aria labels, color contrast, reduced motion
+- [ ] Final visual review with screenshots before implementation is marked complete
+
+## 12. Validation and client readiness
 - [ ] Test all sample questions from the client brief manually
 - [ ] Verify answers return cited source passages for every claim
 - [ ] Confirm no hallucinations or unsupported inference leaks through
@@ -179,7 +224,7 @@ Goal: the assistant recovers missing evidence before refusing, and the chat inte
 - [ ] Validate analyst workflow: ask question, inspect source, save chat
 - [ ] Write a quick “pilot checklist” for the first 5 analysts
 
-## 12. Deployment and launch
+## 13. Deployment and launch
 - [ ] Choose a host for backend and frontend (Railway, Vercel, etc.)
 - [ ] Deploy backend, frontend, and connect to Supabase
 - [ ] Set production environment variables securely
