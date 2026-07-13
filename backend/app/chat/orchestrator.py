@@ -152,6 +152,19 @@ def fallback_grounded_answer(evidence_brief: EvidenceBrief) -> GroundedAnswer | 
     return GroundedAnswer(answer="\n".join(sections), citations=citations)
 
 
+def not_enough_verified_evidence_answer() -> GroundedAnswer:
+    """Fail closed with a valid chat answer when the model never returns."""
+
+    return GroundedAnswer(
+        answer="There is not enough verified evidence in the retrieved filings to answer reliably.",
+        not_enough_evidence=True,
+    )
+
+
+def fallback_or_not_enough_evidence(evidence_brief: EvidenceBrief) -> GroundedAnswer:
+    return fallback_grounded_answer(evidence_brief) or not_enough_verified_evidence_answer()
+
+
 def validate_or_fallback_answer(
     answer: GroundedAnswer,
     retrieval_result: RetrievalResult,
@@ -215,6 +228,7 @@ def run_chat_turn(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
+    use_verified_fallback = False
     model_answer = deterministic_grounded_answer(evidence_brief)
     if model_answer is None:
         try:
@@ -223,11 +237,11 @@ def run_chat_turn(
             if not _is_context_length_error(exc):
                 raise
             logger.warning("Model context limit exceeded; using verified evidence fallback.")
-            model_answer = fallback_grounded_answer(evidence_brief)
-            if model_answer is None:
-                raise
+            use_verified_fallback = True
     refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
     evidence_brief = refreshed_answer_plan.evidence_brief
+    if use_verified_fallback:
+        model_answer = fallback_or_not_enough_evidence(evidence_brief)
     answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)
 
     assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, deps.retrieval_result))
@@ -267,6 +281,7 @@ async def run_chat_turn_async(
         evidence_brief=evidence_brief,
         answer_plan=answer_plan,
     )
+    use_verified_fallback = False
     model_answer = deterministic_grounded_answer(evidence_brief)
     if model_answer is None:
         try:
@@ -276,18 +291,16 @@ async def run_chat_turn_async(
             )
         except TimeoutError:
             logger.warning("Model answer timed out; using verified evidence fallback.")
-            model_answer = fallback_grounded_answer(evidence_brief)
-            if model_answer is None:
-                raise
+            use_verified_fallback = True
         except Exception as exc:
             if not _is_context_length_error(exc):
                 raise
             logger.warning("Model context limit exceeded; using verified evidence fallback.")
-            model_answer = fallback_grounded_answer(evidence_brief)
-            if model_answer is None:
-                raise
+            use_verified_fallback = True
     refreshed_answer_plan = build_answer_plan(clean_question, deps.retrieval_result)
     evidence_brief = refreshed_answer_plan.evidence_brief
+    if use_verified_fallback:
+        model_answer = fallback_or_not_enough_evidence(evidence_brief)
     answer = validate_or_fallback_answer(model_answer, deps.retrieval_result, evidence_brief)
 
     assistant_message = service.save_message(db, thread, "assistant", format_answer_text(answer, deps.retrieval_result))

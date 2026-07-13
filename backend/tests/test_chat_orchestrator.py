@@ -74,6 +74,35 @@ def make_numeric_retrieval_result(chunk_id=None) -> RetrievalResult:
     )
 
 
+def make_growth_retrieval_result(chunk_id=None) -> RetrievalResult:
+    chunk_id = chunk_id or uuid4()
+    return RetrievalResult(
+        query="Microsoft cloud revenue growth",
+        passages=[
+            RetrievedPassage(
+                chunk_id=chunk_id,
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=84,
+                content=(
+                    "|  | 2025 | 2024 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Intelligent Cloud |  |  |\n"
+                    "| Revenue | 131 | 100 |"
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(),
+    )
+
+
 def make_apple_total_net_sales_result(chunk_id=None) -> RetrievalResult:
     chunk_id = chunk_id or uuid4()
     return RetrievalResult(
@@ -396,4 +425,93 @@ async def test_run_chat_turn_async_falls_back_when_agent_times_out(monkeypatch) 
     turn = await orchestrator.run_chat_turn_async(FakeDb(), SimpleNamespace(), question, agent_runner=slow_agent_runner)
 
     assert "Verified evidence summary" in turn.answer.answer
+    assert [message.role for message in saved_messages] == ["user", "assistant"]
+
+
+@pytest.mark.anyio
+async def test_run_chat_turn_async_timeout_without_structured_evidence_returns_not_enough_evidence(monkeypatch) -> None:
+    retrieval_result = make_retrieval_result()
+    saved_messages = []
+
+    def fake_retrieve_source_passages(*args, **kwargs):
+        return retrieval_result
+
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return retrieval_result, build_answer_plan("Question?", retrieval_result)
+
+    def fake_save_message(db, thread, role, content):
+        message = SimpleNamespace(id=uuid4(), role=role, content=content)
+        saved_messages.append(message)
+        return message
+
+    async def slow_agent_runner(question, deps):
+        await asyncio.sleep(0.05)
+        return GroundedAnswer(answer="Too late.", citations=[])
+
+    monkeypatch.setattr(orchestrator, "ASYNC_AGENT_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
+    monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
+
+    turn = await orchestrator.run_chat_turn_async(FakeDb(), SimpleNamespace(), "Question?", agent_runner=slow_agent_runner)
+
+    assert turn.answer.not_enough_evidence
+    assert "not enough verified evidence" in turn.answer.answer
+    assert not turn.answer.citations
+    assert [message.role for message in saved_messages] == ["user", "assistant"]
+
+
+@pytest.mark.anyio
+async def test_run_chat_turn_async_timeout_rebuilds_fallback_from_refreshed_evidence(monkeypatch) -> None:
+    question = "Microsoft cloud revenue growth"
+    retrieval_result = make_growth_retrieval_result()
+    tool_chunk_id = uuid4()
+    saved_messages = []
+
+    def fake_retrieve_source_passages(*args, **kwargs):
+        return retrieval_result
+
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return retrieval_result, build_answer_plan(question, retrieval_result)
+
+    def fake_save_message(db, thread, role, content):
+        message = SimpleNamespace(id=uuid4(), role=role, content=content)
+        saved_messages.append(message)
+        return message
+
+    async def slow_agent_runner(question, deps):
+        deps.retrieval_result.passages.append(
+            RetrievedPassage(
+                chunk_id=tool_chunk_id,
+                source_document_id=uuid4(),
+                company="MSFT",
+                filing_year=2025,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=85,
+                content=(
+                    "|  | 2025 | 2024 |\n"
+                    "| --- | --- | --- |\n"
+                    "| Intelligent Cloud |  |  |\n"
+                    "| Revenue | 131 | 200 |"
+                ),
+                metadata={},
+                rank=2,
+                fused_score=0.1,
+            )
+        )
+        await asyncio.sleep(0.05)
+        return GroundedAnswer(answer="Too late.", citations=[])
+
+    monkeypatch.setattr(orchestrator, "ASYNC_AGENT_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
+    monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
+
+    turn = await orchestrator.run_chat_turn_async(FakeDb(), SimpleNamespace(), question, agent_runner=slow_agent_runner)
+
+    assert "Verified evidence summary" in turn.answer.answer
+    assert "31%" not in turn.answer.answer
+    assert turn.evidence_brief.conflicts
+    assert any(passage.chunk_id == tool_chunk_id for passage in turn.retrieval_result.passages)
     assert [message.role for message in saved_messages] == ["user", "assistant"]
