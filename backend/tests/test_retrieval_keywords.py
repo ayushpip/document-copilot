@@ -24,6 +24,12 @@ def test_fallback_query_plan_infers_company_years_and_filing_type() -> None:
     assert "2023" not in plan.full_text_query
 
 
+def test_normalize_filing_type_rejects_combined_values() -> None:
+    assert keywords.normalize_filing_type("10-K") == "10-K"
+    assert keywords.normalize_filing_type("10-K, 10-Q") is None
+    assert keywords.normalize_filing_type("10-K, 10-Q", fallback="10-K") == "10-K"
+
+
 def test_plan_retrieval_query_falls_back_when_llm_fails(monkeypatch) -> None:
     class BrokenOpenAI:
         def __init__(self, api_key):

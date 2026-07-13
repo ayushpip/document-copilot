@@ -100,6 +100,15 @@ def infer_filing_type(query: str) -> str | None:
     return None
 
 
+def normalize_filing_type(value: str | None, fallback: str | None = None) -> str | None:
+    """Only keep filing type filters that map to one concrete stored filing type."""
+
+    if not value:
+        return fallback
+    normalized_value = value.upper().strip()
+    return normalized_value if normalized_value in FILING_TYPES else fallback
+
+
 def fallback_query_plan(query: str) -> RetrievalQueryPlan:
     keywords = extract_keywords(query)
     companies = infer_companies(query)
@@ -148,7 +157,7 @@ def plan_retrieval_query(query: str) -> RetrievalQueryPlan:
         content = response.choices[0].message.content or "{}"
         payload = json.loads(content)
         companies = [str(company).upper() for company in payload.get("companies") or fallback.companies]
-        filing_type = str(payload["filing_type"]).upper() if payload.get("filing_type") else fallback.filing_type
+        filing_type = normalize_filing_type(str(payload["filing_type"]) if payload.get("filing_type") else None, fallback.filing_type)
         keywords = list(payload.get("keywords") or fallback.keywords)
         planned_full_text_query = str(payload.get("full_text_query") or fallback.full_text_query)
         full_text_keywords = extract_keywords(planned_full_text_query) or keywords

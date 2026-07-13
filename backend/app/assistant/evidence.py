@@ -14,7 +14,7 @@ YEAR_PATTERN = re.compile(r"\b(20\d{2})\b")
 NUMBER_PATTERN = re.compile(r"\(?-?\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)\s*\)?")
 ASSIGNMENT_PATTERN = re.compile(r"([^.,]+?),\s*(\d+)\s*=\s*([^.]*)\.")
 FLATTENED_ASSIGNMENT_PATTERN = re.compile(
-    r"(?P<label>.+?),\s*(?P<index>\d+)\s*=\s*(?P<value>.*?)(?=\.\s+[^.]+?,\s*\d+\s*=|$)",
+    r"(?:^|\.\s+)(?P<label>[^.]{1,160}?),\s*(?P<index>\d+)\s*=\s*(?P<value>.*?)(?=\.\s+[^.]{1,160}?,\s*\d+\s*=|\.?$)",
     re.DOTALL,
 )
 TABLE_SEPARATOR_PATTERN = re.compile(r"^\|\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$")
@@ -76,6 +76,7 @@ KNOWN_SEGMENTS_AND_PRODUCTS = {
     "gaming",
 }
 KNOWN_REQUESTED_METRICS = KNOWN_SEGMENTS_AND_PRODUCTS | KNOWN_FINANCIAL_METRICS
+PRODUCT_REVENUE_METRICS = {"iphone", "services", "mac", "ipad", "wearables, home and accessories", "wearables"}
 
 
 class EvidenceRow(BaseModel):
@@ -321,15 +322,25 @@ def _flattened_rows_from_passage(passage: RetrievedPassage, text: str) -> list[E
 def _docling_assignment_rows_from_passage(passage: RetrievedPassage, text: str) -> list[EvidenceRow]:
     """Extract rows from Docling's flattened `Label, n = value.` table format."""
 
-    assignments = [
-        (
-            " ".join(match.group("label").strip(" .").split()),
-            int(match.group("index")),
-            match.group("value").strip().rstrip(".").strip(),
-            match.group(0).strip().rstrip("."),
+    assignments = []
+    for match in FLATTENED_ASSIGNMENT_PATTERN.finditer(text):
+        label = " ".join(match.group("label").strip(" .").split())
+        if "\n" in match.group("label"):
+            label = next(
+                line.strip(" .")
+                for line in reversed(match.group("label").splitlines())
+                if line.strip()
+            )
+        if len(label) > 120:
+            continue
+        assignments.append(
+            (
+                label,
+                int(match.group("index")),
+                match.group("value").strip().rstrip(".").strip(),
+                match.group(0).strip().rstrip("."),
+            )
         )
-        for match in FLATTENED_ASSIGNMENT_PATTERN.finditer(text)
-    ]
     if not assignments:
         return []
 
@@ -348,6 +359,7 @@ def _docling_assignment_rows_from_passage(passage: RetrievedPassage, text: str) 
 
     rows = []
     current_metric: str | None = None
+    section_label: str | None = None
     index = 0
     while index < len(assignments):
         label = assignments[index][0]
@@ -370,10 +382,12 @@ def _docling_assignment_rows_from_passage(passage: RetrievedPassage, text: str) 
         if not numeric_values:
             if label_lower in KNOWN_FINANCIAL_METRICS:
                 current_metric = label
+            elif all(raw_value in {"", "."} for _label, _assignment_index, raw_value, _quote in run):
+                section_label = label
             continue
 
         if label_lower in KNOWN_FINANCIAL_METRICS:
-            metric = _normalize_metric(label)
+            metric = _normalize_metric(label, section_label)
         elif current_metric:
             metric = _normalize_metric(label, current_metric)
         elif header_years:
@@ -381,7 +395,7 @@ def _docling_assignment_rows_from_passage(passage: RetrievedPassage, text: str) 
         else:
             continue
 
-        if header_years and len(numeric_values) == len(header_years):
+        if header_years and len(numeric_values) <= len(header_years):
             year_value_pairs = [
                 (year, raw_value, parsed_value, quote)
                 for year, (_assignment_index, raw_value, parsed_value, quote) in zip(
@@ -396,6 +410,7 @@ def _docling_assignment_rows_from_passage(passage: RetrievedPassage, text: str) 
             ]
 
         for year, raw_value, parsed_value, quote in year_value_pairs:
+            canonical_metric = _canonical_metric(metric)
             rows.append(
                 EvidenceRow(
                     company=passage.company,
@@ -403,7 +418,14 @@ def _docling_assignment_rows_from_passage(passage: RetrievedPassage, text: str) 
                     filing_type=passage.filing_type,
                     metric=metric,
                     value=parsed_value,
-                    unit="USD millions" if "$" in raw_value or "sales" in metric.lower() or "revenue" in metric.lower() else "numeric",
+                    unit=(
+                        "USD millions"
+                        if "$" in raw_value
+                        or "sales" in metric.lower()
+                        or "revenue" in metric.lower()
+                        or (canonical_metric in PRODUCT_REVENUE_METRICS and parsed_value >= 1000)
+                        else "numeric"
+                    ),
                     source_filing_year=passage.filing_year,
                     source_chunk_id=passage.chunk_id,
                     source_chunk_index=passage.chunk_index,
@@ -500,7 +522,6 @@ def extract_evidence(retrieval_result: RetrievalResult) -> list[EvidenceRow]:
         passage_rows = _table_rows_from_passage(passage)
         for text in [passage.content, *passage.neighbor_chunks]:
             passage_rows.extend(_docling_assignment_rows_from_passage(passage, text))
-            passage_rows.extend(_flattened_rows_from_passage(passage, text))
             passage_rows.extend(_prose_rows_from_passage(passage, text))
 
         for row in passage_rows:
@@ -532,6 +553,11 @@ def _filter_relevant_rows(question: str, rows: list[EvidenceRow]) -> list[Eviden
         filtered_rows = [row for row in filtered_rows if row.company in companies]
     if years:
         filtered_rows = [row for row in filtered_rows if row.filing_year in years]
+    filtered_rows = [
+        row
+        for row in filtered_rows
+        if not (_canonical_metric(row.metric) in PRODUCT_REVENUE_METRICS and row.unit != "USD millions" and row.value < 1000)
+    ]
     if terms:
         relevant_rows = [
             row
@@ -680,7 +706,11 @@ def _build_calculations(rows: list[EvidenceRow]) -> list[CalculationRow]:
 
 def _requested_years(question: str) -> set[int]:
     years = {int(match.group(1)) for match in YEAR_PATTERN.finditer(question)}
-    range_match = re.search(r"\b(20\d{2})\s*[-–]\s*(20\d{2})\b", question)
+    range_match = re.search(
+        r"\b(20\d{2})\b\s*(?:[-–]\s*|\b(?:to|through|thru)\b(?:\s+\w+){0,3}\s+)\b(20\d{2})\b",
+        question,
+        re.IGNORECASE,
+    )
     if range_match:
         start_year = int(range_match.group(1))
         end_year = int(range_match.group(2))
@@ -719,11 +749,14 @@ def _coverage_gaps(question: str, rows: list[EvidenceRow]) -> list[CoverageGap]:
     gaps.extend(CoverageGap(dimension="company", value=company) for company in sorted(requested_companies(question)) if company not in available_companies)
 
     available_metrics = " ".join(row.metric.lower() for row in rows)
-    gaps.extend(
-        CoverageGap(dimension="segment_or_product", value=term)
-        for term in sorted(requested_terms(question))
-        if term not in available_metrics
-    )
+    requested = requested_terms(question)
+    segment_terms = requested & KNOWN_SEGMENTS_AND_PRODUCTS
+    for term in sorted(requested):
+        if term in available_metrics:
+            continue
+        if term in KNOWN_FINANCIAL_METRICS and segment_terms and rows:
+            continue
+        gaps.append(CoverageGap(dimension="segment_or_product", value=term))
     return gaps
 
 

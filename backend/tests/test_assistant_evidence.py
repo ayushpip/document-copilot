@@ -80,6 +80,41 @@ Intelligent Cloud, 1 = 49,584. Intelligent Cloud, 2 = 37,884.
     )
 
 
+def test_extract_evidence_ignores_legacy_flattened_parser_year_pollution() -> None:
+    result = RetrievalResult(
+        query="Compare Apple's Services revenue growth and share of total net sales from fiscal 2021 to fiscal 2025.",
+        passages=[
+            RetrievedPassage(
+                chunk_id=uuid4(),
+                source_document_id=uuid4(),
+                company="AAPL",
+                filing_year=2022,
+                filing_type="10-K",
+                filing_url=None,
+                chunk_index=33,
+                content=(
+                    "2022, 1 = 2021. 2022, 2 = 2020. "
+                    "Services (3), 1 = 78,129. Services (3), 2 = 68,425. Services (3), 3 = 53,768. "
+                    "Total net sales, 1 = $. Total net sales, 2 = 394,328. "
+                    "Total net sales, 3 = $. Total net sales, 4 = 365,817. "
+                    "Total net sales, 5 = $. Total net sales, 6 = 274,515."
+                ),
+                metadata={},
+                rank=1,
+                fused_score=0.1,
+            )
+        ],
+        settings=RetrievalSettings(),
+        filters=RetrievalFilters(company="AAPL"),
+    )
+
+    rows = extract_evidence(result)
+
+    assert next(row for row in rows if row.metric == "Services (3)" and row.filing_year == 2022).value == 78_129
+    assert next(row for row in rows if row.metric == "Total net sales" and row.filing_year == 2022).value == 394_328
+    assert not any(row.metric == "Services (3) Total net sales" for row in rows)
+
+
 def test_extract_evidence_handles_market_platform_prose_growth_and_values() -> None:
     result = RetrievalResult(
         query="Compare NVIDIA Data Center and Gaming revenue growth.",
