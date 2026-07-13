@@ -216,13 +216,17 @@ Goal: turn the working chat into a polished internal analyst tool with reusable 
 - [X] Accessibility pass: keyboard navigation, focus rings, aria labels, color contrast, reduced motion
 - [X] Final visual review checklist completed for the implemented shell
 
-## 12. Validation and client readiness
-- [ ] Test all sample questions from the client brief manually
-- [ ] Verify answers return cited source passages for every claim
-- [ ] Confirm no hallucinations or unsupported inference leaks through
-- [ ] Validate login and conversation persistence
-- [ ] Validate analyst workflow: ask question, inspect source, save chat
-- [ ] Write a quick “pilot checklist” for the first 5 analysts
+## 12. Pilot readiness
+
+Goal: 5 senior analysts can use it for a week and report >=3 hours saved per analyst per week.
+
+- [ ] README "Running locally" section — copy-paste commands for backend + frontend + env vars
+- [ ] Seed or document how to ingest/update the corpus
+- [ ] Smoke-test all 10 example questions from the client brief
+- [ ] Confirm chat history persists across sessions
+- [ ] Confirm ~40-user scale assumptions (no hardcoded single-user shortcuts)
+- [ ] Basic structured logging on backend (`structlog`) for debugging failed turns
+- [ ] Review latency: streaming starts within a few seconds for typical queries
 
 ## 13. Deployment and launch
 - [ ] Choose a host for backend and frontend (Railway, Vercel, etc.)
@@ -244,3 +248,16 @@ Goal: turn the working chat into a polished internal analyst tool with reusable 
 8. Build frontend UI and connect it
 9. Test against the client brief
 10. Deploy and validate
+
+## Future improvement
+
+Goal: keep the chat stable while improving retrieval and structured evidence quality for harder analyst questions.
+
+- [ ] Preserve the fixed behavior where grounding/evidence validation errors do not surface as user-facing chat failures
+- [ ] Add regression coverage so timeout fallback continues returning either verified evidence summaries or valid "not enough evidence" responses
+- [ ] Investigate recurring 2025 evidence issues, especially year alignment in multi-year filing tables
+- [ ] Improve table extraction so latest-year columns from 2025 filings are not shifted into 2024
+- [ ] Normalize footnote-labeled metrics such as `Services (1)` / `Services (2)` into one canonical metric when appropriate
+- [ ] Distinguish revenue/net sales rows from gross margin and cost rows more reliably
+- [ ] Improve fallback answers so they summarize conclusions instead of returning raw evidence dumps
+- [ ] Re-test hard Apple, Microsoft, and NVIDIA comparison questions after retrieval/evidence fixes
