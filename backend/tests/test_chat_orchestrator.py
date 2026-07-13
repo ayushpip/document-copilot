@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from uuid import uuid4
+import asyncio
 
 import pytest
 
@@ -363,4 +364,36 @@ async def test_run_chat_turn_async_uses_async_agent_runner(monkeypatch) -> None:
     turn = await orchestrator.run_chat_turn_async(FakeDb(), SimpleNamespace(), "Question?", agent_runner=fake_agent_runner)
 
     assert turn.answer.answer == "Apple Services and iPhone sales increased."
+    assert [message.role for message in saved_messages] == ["user", "assistant"]
+
+
+@pytest.mark.anyio
+async def test_run_chat_turn_async_falls_back_when_agent_times_out(monkeypatch) -> None:
+    question = "Microsoft cloud revenue"
+    retrieval_result = make_numeric_retrieval_result()
+    saved_messages = []
+
+    def fake_retrieve_source_passages(*args, **kwargs):
+        return retrieval_result
+
+    def fake_build_recovered_answer_plan(*args, **kwargs):
+        return retrieval_result, build_answer_plan(question, retrieval_result)
+
+    def fake_save_message(db, thread, role, content):
+        message = SimpleNamespace(id=uuid4(), role=role, content=content)
+        saved_messages.append(message)
+        return message
+
+    async def slow_agent_runner(question, deps):
+        await asyncio.sleep(0.05)
+        return GroundedAnswer(answer="Too late.", citations=[])
+
+    monkeypatch.setattr(orchestrator, "ASYNC_AGENT_TIMEOUT_SECONDS", 0.001)
+    monkeypatch.setattr(orchestrator, "retrieve_source_passages", fake_retrieve_source_passages)
+    monkeypatch.setattr(orchestrator, "build_recovered_answer_plan", fake_build_recovered_answer_plan)
+    monkeypatch.setattr(orchestrator.service, "save_message", fake_save_message)
+
+    turn = await orchestrator.run_chat_turn_async(FakeDb(), SimpleNamespace(), question, agent_runner=slow_agent_runner)
+
+    assert "Verified evidence summary" in turn.answer.answer
     assert [message.role for message in saved_messages] == ["user", "assistant"]

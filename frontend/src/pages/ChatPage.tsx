@@ -33,7 +33,7 @@ const RUN_STAGES = [
   'Ranking relevant passages...',
   'Checking source evidence...',
   'Drafting grounded answer...',
-  'Validating citations...',
+  'Finalizing answer...',
 ]
 
 function useIsNarrowViewport() {

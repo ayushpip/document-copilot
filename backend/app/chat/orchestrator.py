@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from collections import defaultdict
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from app.retrieval import RetrievedPassage, RetrievalFilters, RetrievalResult, R
 AgentRunner = Callable[[str, DocumentAgentDeps], GroundedAnswer]
 AsyncAgentRunner = Callable[[str, DocumentAgentDeps], Awaitable[GroundedAnswer]]
 logger = logging.getLogger(__name__)
+ASYNC_AGENT_TIMEOUT_SECONDS = 45
 
 
 @dataclass
@@ -268,7 +270,15 @@ async def run_chat_turn_async(
     model_answer = deterministic_grounded_answer(evidence_brief)
     if model_answer is None:
         try:
-            model_answer = await agent_runner(clean_question, deps)
+            model_answer = await asyncio.wait_for(
+                agent_runner(clean_question, deps),
+                timeout=ASYNC_AGENT_TIMEOUT_SECONDS,
+            )
+        except TimeoutError:
+            logger.warning("Model answer timed out; using verified evidence fallback.")
+            model_answer = fallback_grounded_answer(evidence_brief)
+            if model_answer is None:
+                raise
         except Exception as exc:
             if not _is_context_length_error(exc):
                 raise
