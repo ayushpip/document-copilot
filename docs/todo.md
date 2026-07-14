@@ -229,11 +229,105 @@ Goal: 5 senior analysts can use it for a week and report >=3 hours saved per ana
 - [ ] Review latency: streaming starts within a few seconds for typical queries
 
 ## 13. Deployment and launch
-- [ ] Choose a host for backend and frontend (Railway, Vercel, etc.)
-- [ ] Deploy backend, frontend, and connect to Supabase
-- [ ] Set production environment variables securely
-- [ ] Run final end-to-end smoke tests in production
-- [ ] Document deployment steps and handoff notes
+
+Goal: deploy Document Copilot on Railway with Supabase as the production database/auth provider, then verify analysts can use the live app end to end.
+
+**Railway project setup**
+
+- [ ] Create a Railway project named `document-copilot`
+- [ ] Connect the GitHub repository to Railway
+- [ ] Create separate Railway services for `backend` and `frontend`
+- [ ] Confirm Railway deploys from the intended branch
+- [ ] Decide whether production deploys should run automatically on every push or only from manual promotion
+- [ ] Add Railway project/team access only for people who need production access
+
+**Backend service**
+
+- [ ] Configure backend root directory as `backend`
+- [ ] Confirm Railway detects the Python/uv project correctly
+- [ ] Set backend start command: `uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- [ ] Set backend health check path to `/health`
+- [ ] Confirm backend deploy logs show app startup without missing env vars
+- [ ] Open backend production URL and verify `/health` returns `{"status":"ok"}`
+- [ ] Run Alembic migrations against production Supabase before production smoke testing
+- [ ] Confirm production backend can connect to Supabase Postgres
+- [ ] Confirm production backend can verify Supabase Auth bearer tokens
+
+**Frontend service**
+
+- [ ] Configure frontend root directory as `frontend`
+- [ ] Confirm Railway detects the Node/pnpm project correctly
+- [ ] Set frontend build command: `pnpm install --frozen-lockfile && pnpm build`
+- [ ] Set frontend start command: `pnpm preview --host 0.0.0.0 --port $PORT`
+- [ ] Confirm frontend deploy logs show a successful Vite production build
+- [ ] Open frontend production URL and verify the login page loads
+- [ ] Confirm frontend points to the production backend URL, not localhost
+
+**Production environment variables**
+
+- [ ] Backend: set `SUPABASE_URL`
+- [ ] Backend: set `SUPABASE_ANON_KEY`
+- [ ] Backend: set `SUPABASE_SERVICE_ROLE_KEY`
+- [ ] Backend: set `DATABASE_URL` using the direct Supabase database connection string
+- [ ] Backend: set `OPENAI_API_KEY`
+- [ ] Backend: set `OPENAI_EMBEDDING_MODEL`
+- [ ] Backend: set `OPENAI_EMBEDDING_DIMENSIONS`
+- [ ] Backend: set `OPENAI_CHAT_MODEL`
+- [ ] Backend: set `ALLOWED_ORIGINS` to the production frontend Railway domain
+- [ ] Frontend: set `VITE_API_BASE_URL` to the production backend Railway domain
+- [ ] Frontend: set `VITE_SUPABASE_URL`
+- [ ] Frontend: set `VITE_SUPABASE_ANON_KEY`
+- [ ] Verify no service-role key, database URL, or OpenAI key is exposed in frontend variables or client bundle
+
+**Supabase production settings**
+
+- [ ] Add the production frontend Railway URL to Supabase Auth redirect/site URLs
+- [ ] Confirm email auth settings match pilot expectations
+- [ ] Confirm production database has the latest Alembic schema
+- [ ] Confirm `pgvector` extension exists in production
+- [ ] Confirm source documents and chunks exist in production Supabase
+- [ ] Confirm retrieval indexes exist: vector HNSW index and full-text GIN index
+- [ ] Confirm RLS policies are enabled for user-owned chat data
+
+**Production corpus**
+
+- [ ] Decide whether production uses the existing ingested corpus or a fresh Railway/Supabase ingest
+- [ ] Run source-document ingest for production if needed
+- [ ] Run chunk/embedding ingest for production if needed
+- [ ] Verify expected corpus coverage: AAPL, AMZN, GOOGL, MSFT, NVDA filings for 2021-2025
+- [ ] Spot-check one known filing table in production retrieval data
+
+**Production smoke tests**
+
+- [ ] Sign up or sign in with a pilot analyst account
+- [ ] Create a new chat thread
+- [ ] Ask a simple single-fact question and verify cited answer appears
+- [ ] Click a citation and verify the source passage panel opens
+- [ ] Reload the page and confirm chat history persists
+- [ ] Sign out and sign back in, then confirm the same chat history is visible
+- [ ] Create a second user and confirm they cannot see the first user's threads
+- [ ] Ask an out-of-corpus question and verify a "not enough evidence" answer, not a crash
+- [ ] Trigger or observe a failed-turn log and confirm Railway logs include structured `structlog` fields
+- [ ] Confirm no CORS errors appear in browser devtools during chat
+
+**Operational checks**
+
+- [ ] Document where to view Railway deploy logs and runtime logs
+- [ ] Document how to manually redeploy backend and frontend
+- [ ] Document how to roll back to a previous Railway deployment
+- [ ] Document how to rotate compromised Supabase/OpenAI secrets
+- [ ] Confirm Railway usage/cost expectations for the pilot
+- [ ] Confirm OpenAI usage/cost expectations for the pilot
+- [ ] Confirm who owns production incident response during pilot week
+
+**Launch handoff**
+
+- [ ] Add production frontend URL to the project README or pilot notes
+- [ ] Add production backend URL and health endpoint to internal handoff notes
+- [ ] Write a short pilot tester checklist for the 5 analysts
+- [ ] Write known limitations before launch, especially current hard-question retrieval/evidence issues
+- [ ] Confirm which Phase 12 items remain open before launch
+- [ ] Final go/no-go review before sharing the app with analysts
 
 ---
 
