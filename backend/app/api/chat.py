@@ -1,13 +1,13 @@
 """Chat shell API routes."""
 
 from collections.abc import Iterable
-import logging
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+import structlog
 
 from app.auth import CurrentUser, get_current_user
 from app.assistant.evidence import EvidenceValidationError
@@ -19,7 +19,7 @@ from app.database.models import ChatMessage, DocumentChunk
 from app.database.session import get_session
 from app.grounding import GroundingValidationError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def get_app_user(current_user: CurrentUser, db: Session):
@@ -121,18 +121,34 @@ async def stream_chat(
     user = get_app_user(current_user, db)
     thread = service.get_owned_thread(db, user, payload.thread_id)
     user_message = service.latest_user_message(payload.messages)
+    log_context = {
+        "thread_id": str(thread.id),
+        "app_user_id": str(user.id),
+        "supabase_user_id": current_user.user_id,
+        "message_count": len(payload.messages),
+    }
     try:
         turn = await run_chat_turn_async(db, thread, user_message.content)
     except (GroundingValidationError, EvidenceValidationError) as exc:
         db.rollback()
-        logger.warning("Chat stream validation failed: %s", exc)
+        logger.warning(
+            "chat_stream_validation_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            **log_context,
+        )
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Assistant response failed grounding or evidence validation.",
         ) from exc
     except Exception as exc:
         db.rollback()
-        logger.exception("Chat stream failed.")
+        logger.exception(
+            "chat_stream_failed",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            **log_context,
+        )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Chat stream failed. Check the backend logs for the underlying error.",

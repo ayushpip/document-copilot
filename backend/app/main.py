@@ -7,6 +7,9 @@ from app.api.auth import CurrentUserResponse, read_current_user
 from app.api.chat import register_chat_routes
 from app.auth import CurrentUser, get_current_user
 from app.config import settings
+from app.logging import configure_logging
+
+configure_logging()
 
 app = FastAPI(title="Document Copilot API")
 

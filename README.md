@@ -49,7 +49,56 @@ You also need accounts/keys for external services once the app is wired up. Star
 
 ## Running locally
 
-To be added during the build. Setup guides:
+Create local environment files from the examples:
+
+```bash
+cd ~/ai_projects/document-copilot
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+Fill in the required values:
+
+- `backend/.env`: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `OPENAI_API_KEY`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_EMBEDDING_DIMENSIONS`, `ALLOWED_ORIGINS`
+- `frontend/.env`: `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+
+Run the backend:
+
+```bash
+cd ~/ai_projects/document-copilot/backend
+uv --cache-dir /tmp/uv-cache run alembic upgrade head
+uv --cache-dir /tmp/uv-cache run uvicorn app.main:app --reload
+```
+
+Run the frontend in a second terminal:
+
+```bash
+cd ~/ai_projects/document-copilot/frontend
+pnpm install
+pnpm dev
+```
+
+Open the app at the URL printed by Vite, usually:
+
+```text
+http://localhost:5173
+```
+
+Useful checks:
+
+```bash
+cd ~/ai_projects/document-copilot/backend
+uv --cache-dir /tmp/uv-cache run pytest
+uv --cache-dir /tmp/uv-cache run ruff check .
+```
+
+```bash
+cd ~/ai_projects/document-copilot/frontend
+pnpm lint
+pnpm build
+```
+
+Detailed setup guides:
 
 - [Supabase](docs/guides/supabase-setup.md) — account, hosted project (dashboard or CLI)
 - [Backend](docs/guides/backend-setup.md)
