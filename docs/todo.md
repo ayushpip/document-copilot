@@ -234,50 +234,50 @@ Goal: deploy Document Copilot on Railway with Supabase as the production databas
 
 **Railway project setup**
 
-- [ ] Create a Railway project named `document-copilot`
-- [ ] Connect the GitHub repository to Railway
-- [ ] Create separate Railway services for `backend` and `frontend`
+- [ ] Create a Railway project named `document-copilot` (currently `selfless-eagerness`; rename in Railway Project Settings -> General)
+- [X] Connect the GitHub repository to Railway
+- [X] Create separate Railway services for `backend` and `frontend`
 - [ ] Confirm Railway deploys from the intended branch
 - [ ] Decide whether production deploys should run automatically on every push or only from manual promotion
 - [ ] Add Railway project/team access only for people who need production access
 
 **Backend service**
 
-- [ ] Configure backend root directory as `backend`
-- [ ] Confirm Railway detects the Python/uv project correctly
-- [ ] Set backend start command: `uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT`
-- [ ] Set backend health check path to `/health`
-- [ ] Confirm backend deploy logs show app startup without missing env vars
-- [ ] Open backend production URL and verify `/health` returns `{"status":"ok"}`
+- [X] Configure backend root directory as `backend`
+- [X] Confirm Railway detects the Python/uv project correctly
+- [X] Set backend start command: `uv run --no-dev uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- [X] Set backend health check path to `/health`
+- [X] Confirm backend deploy logs show app startup without missing env vars
+- [X] Open backend production URL and verify `/health` returns `{"status":"ok"}`
 - [ ] Run Alembic migrations against production Supabase before production smoke testing
 - [ ] Confirm production backend can connect to Supabase Postgres
 - [ ] Confirm production backend can verify Supabase Auth bearer tokens
 
 **Frontend service**
 
-- [ ] Configure frontend root directory as `frontend`
-- [ ] Confirm Railway detects the Node/pnpm project correctly
-- [ ] Set frontend build command: `pnpm install --frozen-lockfile && pnpm build`
-- [ ] Set frontend start command: `pnpm preview --host 0.0.0.0 --port $PORT`
-- [ ] Confirm frontend deploy logs show a successful Vite production build
-- [ ] Open frontend production URL and verify the login page loads
-- [ ] Confirm frontend points to the production backend URL, not localhost
+- [X] Configure frontend root directory as `frontend`
+- [X] Confirm Railway detects the Node/pnpm project correctly
+- [X] Set frontend build command: `pnpm install --frozen-lockfile && pnpm build`
+- [X] Set frontend start command: `pnpm preview --host 0.0.0.0 --port $PORT`
+- [X] Confirm frontend deploy logs show a successful Vite production build
+- [X] Open frontend production URL and verify the login page loads
+- [X] Confirm frontend points to the production backend URL, not localhost
 
 **Production environment variables**
 
-- [ ] Backend: set `SUPABASE_URL`
-- [ ] Backend: set `SUPABASE_ANON_KEY`
-- [ ] Backend: set `SUPABASE_SERVICE_ROLE_KEY`
-- [ ] Backend: set `DATABASE_URL` using the direct Supabase database connection string
-- [ ] Backend: set `OPENAI_API_KEY`
-- [ ] Backend: set `OPENAI_EMBEDDING_MODEL`
-- [ ] Backend: set `OPENAI_EMBEDDING_DIMENSIONS`
-- [ ] Backend: set `OPENAI_CHAT_MODEL`
-- [ ] Backend: set `ALLOWED_ORIGINS` to the production frontend Railway domain
-- [ ] Frontend: set `VITE_API_BASE_URL` to the production backend Railway domain
-- [ ] Frontend: set `VITE_SUPABASE_URL`
-- [ ] Frontend: set `VITE_SUPABASE_ANON_KEY`
-- [ ] Verify no service-role key, database URL, or OpenAI key is exposed in frontend variables or client bundle
+- [X] Backend: set `SUPABASE_URL`
+- [X] Backend: set `SUPABASE_ANON_KEY`
+- [X] Backend: set `SUPABASE_SERVICE_ROLE_KEY`
+- [X] Backend: set `DATABASE_URL` using the direct Supabase database connection string
+- [X] Backend: set `OPENAI_API_KEY`
+- [X] Backend: set `OPENAI_EMBEDDING_MODEL`
+- [X] Backend: set `OPENAI_EMBEDDING_DIMENSIONS`
+- [X] Backend: set `OPENAI_CHAT_MODEL`
+- [X] Backend: set `ALLOWED_ORIGINS` to the production frontend Railway domain
+- [X] Frontend: set `VITE_API_BASE_URL` to the production backend Railway domain
+- [X] Frontend: set `VITE_SUPABASE_URL`
+- [X] Frontend: set `VITE_SUPABASE_ANON_KEY`
+- [X] Verify no service-role key, database URL, or OpenAI key is exposed in frontend variables or client bundle
 
 **Supabase production settings**
 
