@@ -354,4 +354,7 @@ Goal: keep the chat stable while improving retrieval and structured evidence qua
 - [ ] Normalize footnote-labeled metrics such as `Services (1)` / `Services (2)` into one canonical metric when appropriate
 - [ ] Distinguish revenue/net sales rows from gross margin and cost rows more reliably
 - [ ] Improve fallback answers so they summarize conclusions instead of returning raw evidence dumps
+- [ ] Reject unsupported out-of-corpus company/topic questions before answer generation; e.g. a Tesla robotaxi question should return "not enough evidence" instead of unrelated 2025 NVDA/MSFT evidence
+- [ ] Add evidence gating that blocks verified summaries when retrieved evidence companies or topics do not match the requested company/topic
+- [ ] Fix metric-unit extraction for percentage rows so "as a percentage of revenues" is not labeled as `USD millions`
 - [ ] Re-test hard Apple, Microsoft, and NVIDIA comparison questions after retrieval/evidence fixes
